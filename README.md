@@ -433,6 +433,12 @@ node scripts/local-review.ts --repo ../my-app --base main --head my-branch --pro
 API_KEY=<your OpenCode key> node scripts/local-review.ts --repo ../my-app --base main --head my-branch --harness claude-code --base-url https://opencode.ai/inference/anthropic
 ```
 
+The same OpenCode key works with Codex through OpenCode's Responses endpoint. Pick a model your OpenCode workspace has turned on:
+
+```bash
+API_KEY=<your OpenCode key> node scripts/local-review.ts --repo ../my-app --base main --head my-branch --harness codex --model glm-5.3 --base-url https://opencode.ai/inference/openai/v1
+```
+
 Add `--json out.json` to keep the full record, or `--dry` to run the hard rules without calling a model.
 
 To rebuild the sandbox and rerun the eval:
