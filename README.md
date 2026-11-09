@@ -47,7 +47,7 @@ Seven scenarios is a smoke test, not a benchmark. It shows the whole pipeline wo
 
 Three steps. Nothing on your repo changes until you pick a mode that acts.
 
-1. Add your model key to the repo as a secret named `OPENCODE_API_KEY` (Settings, then Secrets and variables, then Actions). It is an OpenCode key for the default harness. For Claude Code it can be an Anthropic key, or the same OpenCode key used through OpenCode's endpoint (see [Choosing the harness](#choosing-the-harness)).
+1. Add your model key to the repo as a secret named `API_KEY` (Settings, then Secrets and variables, then Actions). The name is the same whatever the provider: the action passes the key to the agent in the variable that agent reads. It is an OpenCode key for the default harness. For Claude Code it can be an Anthropic key, for Codex an OpenAI key, or for either the same OpenCode key used through OpenCode's endpoint (see [Choosing the harness](#choosing-the-harness)).
 2. Add this workflow as `.github/workflows/needs-human-review.yml`. Change `workflows: [CI]` to the name of your CI workflow.
 
 ```yaml
@@ -85,7 +85,7 @@ jobs:
       - uses: alfonsograziano/needs-human-review@v1
         with:
           mode: shadow
-          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          api-key: ${{ secrets.API_KEY }}
           protected-paths: |
             src/payments/**
             **/migrations/**
@@ -100,7 +100,7 @@ To use Claude Code with the same OpenCode key, swap the action step for this one
           mode: shadow
           harness: claude-code
           model: claude-sonnet-5-5
-          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          api-key: ${{ secrets.API_KEY }}
           harness-settings: |
             base-url: https://opencode.ai/inference/anthropic
           protected-paths: |
@@ -338,7 +338,7 @@ node scripts/local-review.ts --repo ../my-app --base main --head my-branch --pro
 ```
 
 ```bash
-API_KEY=$OPENCODE_API_KEY node scripts/local-review.ts --repo ../my-app --base main --head my-branch --harness claude-code --base-url https://opencode.ai/inference/anthropic
+API_KEY=<your OpenCode key> node scripts/local-review.ts --repo ../my-app --base main --head my-branch --harness claude-code --base-url https://opencode.ai/inference/anthropic
 ```
 
 Add `--json out.json` to keep the full record, or `--dry` to run the hard rules without calling a model.

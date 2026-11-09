@@ -408,7 +408,7 @@ Each harness gets its own credentials through an allow-list (sections 6.2 and 6.
 - It sets `OPENCODE_DISABLE_PROJECT_CONFIG=1`, so an `opencode.json` or `.opencode/` folder in the PR cannot change the agent, and sets `PWD` to the workdir, because OpenCode takes its project root from `PWD`.
 - It runs `opencode run --standalone --agent human-review --model <model> --format json` with the PR message, inside the checked-out repo.
 - The reads for the proof-of-reading check come from completed `read` tool calls in the JSON event stream. The line range is taken from the tool's own output ("Read file x, lines 1-2000"), not from what the model asked for.
-- The key comes from the `OPENCODE_API_KEY` secret. The default model is `opencode/deepseek-v4.1-flash` on OpenCode Zen, which bills the key's workspace per use. Zen works with a plain API key in CI. OpenCode Go models (`opencode-go/...`) need a Go subscription on the key's workspace and are meant for OpenCode's own apps, so they are not the default. The action never logs the key.
+- The key comes from the `api-key` input, passed from a secret named `API_KEY` in the docs and examples (the same name for every harness), and reaches OpenCode as `OPENCODE_API_KEY`. The default model is `opencode/deepseek-v4.1-flash` on OpenCode Zen, which bills the key's workspace per use. Zen works with a plain API key in CI. OpenCode Go models (`opencode-go/...`) need a Go subscription on the key's workspace and are meant for OpenCode's own apps, so they are not the default. The action never logs the key.
 - Each run has a hard timeout (`slice-timeout-minutes`, default 10) that kills the process. The whole AI step also has a limit (`timeout-minutes`, default 30). A timeout means needs a human.
 
 ### 6.3 Claude Code
@@ -650,10 +650,9 @@ jobs:
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v1
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           mode: shadow
+          api-key: ${{ secrets.API_KEY }}
           protected-paths: |
             payments/**
             **/migrations/**

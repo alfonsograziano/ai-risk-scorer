@@ -278,10 +278,9 @@ jobs:
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@${ref}
-        env:
-          OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
         with:
           mode: ${mode}
+          api-key: \${{ secrets.API_KEY }}
           model: opencode/deepseek-v4.1-flash
           protected-paths: |
             src/payments/**
