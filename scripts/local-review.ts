@@ -4,8 +4,8 @@
 //
 //   node scripts/local-review.ts --repo ../my-repo --base main --head my-branch
 //
-// Options: --title, --body, --harness (opencode or claude-code), --model,
-// --effort, --base-url, --auth (claude-code), --mode, --protected <glob> (repeat),
+// Options: --title, --body, --harness (opencode, claude-code or codex), --model,
+// --effort, --base-url (claude-code, codex), --auth (claude-code), --mode, --protected <glob> (repeat),
 // --max-lines, --max-files, --slice-max-tokens, --custom-instructions,
 // --dry (fake harness, no model call), --json <file> (write the full record).
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -44,7 +44,7 @@ const { values } = parseArgs({
 });
 
 if (values.help) {
-  console.log('Usage: node scripts/local-review.ts --repo <path> --base <ref> --head <ref> [--title ...] [--harness opencode|claude-code] [--model ...] [--dry] [--json out.json]');
+  console.log('Usage: node scripts/local-review.ts --repo <path> --base <ref> --head <ref> [--title ...] [--harness opencode|claude-code|codex] [--model ...] [--dry] [--json out.json]');
   process.exit(0);
 }
 

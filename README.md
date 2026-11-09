@@ -159,7 +159,7 @@ The model never gets the diff pasted into its prompt. The action builds a review
 - `pr.json` with the full list of changed files
 - the slice plan, which says which files this reviewer must cover
 
-With [OpenCode](https://github.com/anomalyco/opencode), the agent runs with every tool denied except `read`, `grep` and `glob`. The repo's own OpenCode config is ignored, so a PR cannot add an `opencode.json` that loosens the rules. With [Claude Code](https://github.com/anthropics/claude-code), the agent runs in `--restricted` mode with only `Read`, `Grep` and `Glob`, file access kept inside the checkout, and no MCP servers or skills. The repo's `.claude/` settings, hooks and `CLAUDE.md` are not loaded. Either way the agent has no shell, cannot edit files and cannot reach the web. The checkout is also made read-only on disk. The agent process only gets the variables it needs to run and reach the model: no action inputs, no GitHub token, no runner variables. The verdict record keeps which files the agent read, not what the read tool returned.
+With [OpenCode](https://github.com/anomalyco/opencode), the agent runs with every tool denied except `read`, `grep` and `glob`. The repo's own OpenCode config is ignored, so a PR cannot add an `opencode.json` that loosens the rules. With [Claude Code](https://github.com/anthropics/claude-code), the agent runs in `--restricted` mode with only `Read`, `Grep` and `Glob`, file access kept inside the checkout, and no MCP servers or skills. The repo's `.claude/` settings, hooks and `CLAUDE.md` are not loaded. [Codex](https://github.com/openai/codex) has no read-only file tool of its own, only a shell, so the action turns the shell off and gives Codex its own `read`, `grep` and `glob`, served by a small MCP server in this repo that refuses any path outside the checkout. Those reads are the proof of reading, recorded by the action's code rather than parsed from shell commands. The repo's `AGENTS.md` and `.codex/` config are not loaded, and web search, plugins, hooks, skills and sub-agents are off. Whatever the harness, the agent has no shell, cannot edit files and cannot reach the web. The checkout is also made read-only on disk. The agent process only gets the variables it needs to run and reach the model: no action inputs, no GitHub token, no runner variables. The verdict record keeps which files the agent read, not what the read tool returned.
 
 Every line of a changed file must fit the read tool (2,000 characters). A longer line would be cut off, so a PR with one needs a human. The reviewer's final message must hold exactly one verdict, at the end; an answer that quotes another verdict, or is cut off, is invalid. Text from the model and file names from the PR are escaped in the comment, so they cannot add headings, links, images or @mentions.
 
@@ -209,14 +209,14 @@ Either way, the fixed output contract in [`prompts/contract.md`](prompts/contrac
 
 The review runs inside a coding agent, the harness. `harness` picks which one, `model` picks the model, in that harness's format, and `harness-settings` holds the other settings that depend on the harness, one `key: value` per line. Leave out any key to get the default.
 
-| Setting | `opencode` (default) | `claude-code` |
-|---|---|---|
-| `model` (input or setting) | `opencode/deepseek-v4.1-flash`, in `provider/model` format | `claude-sonnet-5-5`, or any model name or alias Claude Code takes |
-| `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the Claude Code release to install from npm |
-| `effort` | n/a | `low`, `medium`, `high`, `xhigh` or `max`. Empty uses the model's default |
-| `base-url` | n/a (not supported yet) | An Anthropic-compatible endpoint, such as a gateway. Empty is Anthropic's API |
-| `auth` | n/a | How `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set |
-| `api-key` goes in | the provider's variable: `OPENCODE_API_KEY` for `opencode/...`, `ANTHROPIC_API_KEY` for `anthropic/...` | `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` for bearer auth |
+| Setting | `opencode` (default) | `claude-code` | `codex` |
+|---|---|---|---|
+| `model` (input or setting) | `opencode/deepseek-v4.1-flash`, in `provider/model` format | `claude-sonnet-5-5`, or any model name or alias Claude Code takes | `gpt-6.1-sol`, or any model the endpoint serves |
+| `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the Claude Code release to install from npm | `0.167.0`, the Codex release to install from npm |
+| `effort` | n/a | `low`, `medium`, `high`, `xhigh` or `max`. Empty uses the model's default | `minimal`, `low`, `medium`, `high` or `xhigh`. Empty uses the model's default |
+| `base-url` | n/a (not supported yet) | An Anthropic-compatible endpoint, such as a gateway. Empty is Anthropic's API | An OpenAI Responses API endpoint, such as a gateway. Empty is OpenAI's API |
+| `auth` | n/a | How `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set | n/a, always a bearer token |
+| `api-key` goes in | the provider's variable: `OPENCODE_API_KEY` for `opencode/...`, `ANTHROPIC_API_KEY` for `anthropic/...` | `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` for bearer auth | `OPENAI_API_KEY` |
 
 ```yaml
         with:
@@ -229,7 +229,7 @@ The review runs inside a coding agent, the harness. `harness` picks which one, `
 
 The key has its own input, `api-key`, the same for every harness, so you can switch harness without renaming secrets. It is not a setting because settings are kept in the verdict record and a key must not be. The harness passes it to the agent in the variable that agent reads. Leave `api-key` empty to set the agent's own variables in `env` instead: for example, Claude Code on Bedrock or Vertex AI, or `CLAUDE_CODE_OAUTH_TOKEN`.
 
-`base-url` is what lets one key work across harnesses. An OpenCode Console key reaches Claude models through `https://opencode.ai/inference/anthropic` (or `https://opencode.ai/inference/go/anthropic` with OpenCode Go), and a LiteLLM or company gateway works the same way.
+`base-url` is what lets one key work across harnesses. An OpenCode Console key reaches Claude models through `https://opencode.ai/inference/anthropic` (or `https://opencode.ai/inference/go/anthropic` with OpenCode Go), and Codex through `https://opencode.ai/inference/openai/v1`. A LiteLLM or company gateway works the same way. Codex only speaks OpenAI's Responses API, so its endpoint must serve that.
 
 A key the harness does not know, or a bad value, fails the job before anything is installed, so a typo never falls back to a default quietly. Pin `version` to an exact release; `latest` is refused, so every run is repeatable.
 
@@ -242,9 +242,9 @@ The model has its own input, `model`, since it is the setting you change most. I
 | Input | Default | What it does |
 |---|---|---|
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
-| `harness` | `opencode` | The coding agent that runs the review: `opencode` or `claude-code` |
-| `model` | the harness's default | Model that runs the review, in the harness's format: `opencode/deepseek-v4.1-flash` for OpenCode, `claude-sonnet-5-5` for Claude Code |
-| `harness-settings` | empty | Other `key: value` lines for the harness: `version`, and `effort`, `base-url`, `auth` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
+| `harness` | `opencode` | The coding agent that runs the review: `opencode`, `claude-code` or `codex` |
+| `model` | the harness's default | Model that runs the review, in the harness's format: `opencode/deepseek-v4.1-flash` for OpenCode, `claude-sonnet-5-5` for Claude Code, `gpt-6.1-sol` for Codex |
+| `harness-settings` | empty | Other `key: value` lines for the harness: `version`, and `effort` and `base-url` for Claude Code and Codex, `auth` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
 | `api-key` | empty | Key for the model, whatever the harness. Pass it from a secret. Empty uses the agent's own variables from `env` |
 | `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, the status and the merge |
@@ -331,7 +331,7 @@ Seven scenarios is a smoke test, not a benchmark. It shows the pipeline works en
 
 ## Run it locally
 
-You can check any branch of a local repo without GitHub. The review runs in a temporary git worktree, so your checkout is never touched. With OpenCode it uses your local login. With Claude Code, set `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, because the reviewer runs with a fresh config folder and does not see your interactive login. `API_KEY` is the local version of the `api-key` input, and `--base-url` and `--auth` match the settings.
+You can check any branch of a local repo without GitHub. The review runs in a temporary git worktree, so your checkout is never touched. With OpenCode it uses your local login. With Claude Code, set `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, and with Codex `OPENAI_API_KEY`, because the reviewer runs with a fresh config folder and does not see your interactive login. `API_KEY` is the local version of the `api-key` input, and `--base-url` and `--auth` match the settings.
 
 ```bash
 node scripts/local-review.ts --repo ../my-app --base main --head my-branch --protected 'src/payments/**'
@@ -368,6 +368,6 @@ node scripts/render-diagram.ts
 
 ## Limits in v1
 
-- Two harnesses, OpenCode and Claude Code. Pi is planned. The eval results above are from OpenCode; Claude Code has not been through the sandbox eval yet.
+- Three harnesses: OpenCode, Claude Code and Codex. Pi is planned. The eval results above are from OpenCode; Claude Code and Codex have not been through the sandbox eval yet.
 - No override log yet. Every run leaves a JSON record, which is the raw material for it.
-- The reviewer agent sets its own system prompt and turns off project config, and a local test on OpenCode 2.0.20 showed that a planted `AGENTS.md` or `CLAUDE.md` does not reach the model. That was one test on one version, so the prompt still treats every repo file as untrusted. For Claude Code, `CLAUDE.md` is turned off with `CLAUDE_CODE_DISABLE_CLAUDE_MDS` and repo settings with `--restricted`. The flags were checked against Claude Code 2.1.319, but no review with a live model has run yet.
+- The reviewer agent sets its own system prompt and turns off project config, and a local test on OpenCode 2.0.20 showed that a planted `AGENTS.md` or `CLAUDE.md` does not reach the model. That was one test on one version, so the prompt still treats every repo file as untrusted. For Claude Code, `CLAUDE.md` is turned off with `CLAUDE_CODE_DISABLE_CLAUDE_MDS` and repo settings with `--restricted`. The flags were checked against Claude Code 2.1.319, and live reviews on the demo repo ran through OpenCode's endpoint with non-Claude models. For Codex, a local test on 0.167.0 with a scripted model checked that the repo's `AGENTS.md` is not sent and that only the three read tools are offered.

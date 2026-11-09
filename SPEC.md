@@ -1,6 +1,6 @@
 # Needs Human Review — Spec
 
-Status: v1 built, 2026-11-02 (spec v0.8). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
+Status: v1 built, 2026-11-02 (spec v0.9). v0.9 (2026-11-09): Codex harness, with read-only tools served by the action's own MCP server (section 6.4). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
 
 ## 1. What it is
 
@@ -21,7 +21,7 @@ The main users are teams whose PRs are often written by coding agents. They want
 - One well-built default prompt, which teams can fully replace or extend.
 - Fail safe: any error, timeout or unclear answer hands off to a human.
 - Three trust levels (shadow, advisory, autonomous), with shadow as the default.
-- Harness-agnostic. Ships with OpenCode and Claude Code. The design leaves room for Pi.
+- Harness-agnostic. Ships with OpenCode, Claude Code and Codex. The design leaves room for Pi.
 - Pure TypeScript, no build step, no runtime dependencies.
 
 ### Non-goals (v1)
@@ -370,17 +370,19 @@ interface FileRead {
 
 One `run` is one reviewer: one slice, or the integrator. The action calls it as many times as section 4.7 needs. The harness never has to know about slices, so an adapter stays small.
 
-The `harness` input picks the adapter: `opencode` (default) or `claude-code`. `pi` is planned (section 14).
+The `harness` input picks the adapter: `opencode` (default), `claude-code` or `codex`. `pi` is planned (section 14).
 
 Everything that depends on the harness goes in one input, `harness-settings`: one `key: value` per line, blank lines and `#` comments skipped. The value is everything after the first colon, so a Bedrock ARN works as a model. Each harness declares the settings it takes, their defaults and how they are checked. An unknown key, a key set twice or a bad value is a config error, so a typo cannot silently fall back to a default. A key with an empty value counts as not set. A `model` may not start with `-`, since it is passed to the CLI as a flag value.
 
-| Setting | `opencode` | `claude-code` |
-|---|---|---|
-| `model` | `opencode/deepseek-v4.1-flash` (must be `provider/model`) | `claude-sonnet-5-5` (an alias like `sonnet` also works) |
-| `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the `@anthropic-ai/claude-code` release to install |
-| `effort` | not taken | empty (the model's default), or `low`, `medium`, `high`, `xhigh`, `max` |
-| `base-url` | not taken | empty (Anthropic's API), or an Anthropic-compatible endpoint: `https`, or `http` on localhost only, with no credentials, query or fragment (the URL goes into the verdict record) |
-| `auth` | not taken | how `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set |
+| Setting | `opencode` | `claude-code` | `codex` |
+|---|---|---|---|
+| `model` | `opencode/deepseek-v4.1-flash` (must be `provider/model`) | `claude-sonnet-5-5` (an alias like `sonnet` also works) | `gpt-6.1-sol`, Codex's own default |
+| `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the `@anthropic-ai/claude-code` release to install | `0.167.0`, the `@openai/codex` release to install |
+| `effort` | not taken | empty (the model's default), or `low`, `medium`, `high`, `xhigh`, `max` | empty (the model's default), or `minimal`, `low`, `medium`, `high`, `xhigh` |
+| `base-url` | not taken | empty (Anthropic's API), or an Anthropic-compatible endpoint | empty (OpenAI's API), or an OpenAI Responses API endpoint |
+| `auth` | not taken | how `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set | not taken: always a bearer token |
+
+A `base-url` must be `https`, or `http` on localhost only, with no credentials, query or fragment (the URL goes into the verdict record).
 
 `version` must be a release number (`1.2.3`), never `latest`, so a run is repeatable. The first step of the action (`src/setup.ts`) reads the config, fails the job on a bad one before anything is installed, and tells the install steps which harness and release to install.
 
@@ -388,6 +390,8 @@ The key is not a setting. Settings go into the verdict record; a key must not. I
 
 - `opencode`: the variable of the provider in `model`. `opencode/` and `opencode-go/` use `OPENCODE_API_KEY`, `google/` uses `GOOGLE_GENERATIVE_AI_API_KEY`, and any other provider uses `<PROVIDER>_API_KEY` (`anthropic/` uses `ANTHROPIC_API_KEY`). OpenCode does not take `base-url` yet: OpenCode 2 ignored the v1 `provider.options.baseURL` config in a local test.
 - `claude-code`: `ANTHROPIC_API_KEY` (sent as `x-api-key`) or `ANTHROPIC_AUTH_TOKEN` (sent as a bearer token), per `auth`. The other two key variables (`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`) are removed from the agent's env, so only that key is sent. `base-url` becomes `ANTHROPIC_BASE_URL`. This is how one key reaches the model through a gateway: with an OpenCode Console key, `base-url: https://opencode.ai/inference/anthropic` and the default bearer auth.
+
+- `codex`: `OPENAI_API_KEY`, the only key variable the agent gets. The adapter always defines its own model provider, at `base-url` or `https://api.openai.com/v1`, that reads the key from that variable as a bearer token. With an OpenCode Console key: `base-url: https://opencode.ai/inference/openai/v1`.
 
 With `api-key` empty, the agent reads its own variables from the job env, as before. The setup step masks the key in the log, in case it was pasted in as text rather than passed from a secret.
 
@@ -423,6 +427,23 @@ Each harness gets its own credentials through an allow-list (sections 6.2 and 6.
 - The event log kept for the verdict record has every tool result removed, like OpenCode's.
 - Claude Code's Read tool also stops at 2,000 lines per call and cuts lines longer than 2,000 characters, so the long-line rule in section 4.6 applies unchanged.
 - The same timeouts as OpenCode apply.
+
+### 6.4 Codex
+
+Codex has no read-only file tool. It reads through its shell, and that rules the shell out twice. First, proof of reading: what the model sees of a command's output is cut (Codex keeps the head and the tail of anything over its output budget, and the model sets that budget per call), while the event log keeps the whole output. A local test with a 3,000-line file showed the log holding all 3,000 lines while the model saw 13. Second, confinement: the read-only sandbox blocks writes and the network, not reads, so a shell can open any file on the runner.
+
+So the adapter takes the shell away and brings its own tools:
+
+- **`src/harness/read-tools-server.ts`**, a small stdio MCP server in this repo (no dependencies), is the agent's only way to see the code. It serves `read`, `grep` and `glob`, all inside the workdir: paths are resolved with `realpath` and anything outside it, including through a symlink, is refused. `read` returns numbered lines, at most 2,000 lines and 24,000 characters per call, and cuts lines over 2,000 characters (section 4.6 already sends those to a human). `grep` and `glob` skip `.git` and symlinks and never count as reading.
+- **Proof of reading comes from that server**, not from Codex: before it answers a `read`, it appends the exact range it returned, with the call's arguments, to a log file outside the workdir. The agent cannot write to it. The adapter counts a logged read only when Codex's own event stream shows a completed `read` call with the same arguments, so a result that never reached the model does not count. Each tool's `output_token_limit` is set to 20,000, far above what one result can hold, so Codex never cuts what the log says the model got.
+- **The run**: `codex exec --json --ephemeral --ignore-user-config --ignore-rules --strict-config --sandbox read-only`, with a fresh `CODEX_HOME` per run (no login, config, skills or sessions from the runner). `--strict-config` makes a misspelled override an error instead of a silently ignored setting.
+- **Overrides** (`-c`): our own model provider (`base_url`, Responses API, key from `OPENAI_API_KEY`); `approval_policy="never"`; `project_doc_max_bytes=0`, so an `AGENTS.md` in the PR never reaches the model (by default Codex sends it as instructions); `model_instructions_file`, so the system prompt replaces Codex's own; `web_search="disabled"`; `skills.include_instructions=false`; the read-tools MCP server, `required`, with only its three tools enabled and approved up front.
+- **Features turned off**: `shell_tool` and `unified_exec` (the shell), `multi_agent`, `goals`, `view_image`, `image_generation`, `apps`, `plugins`, `remote_plugin`, `hooks`, `skill_search`, `skill_mcp_dependency_install`, `tool_suggest`, `browser_use`, `computer_use`, `sleep_tool`, `shell_snapshot`, `daemon_auto_start`, `in_app_updates`. What is left for the model: the three read tools, Codex's MCP resource listing (our server has no resources) and `request_user_input` (only works in plan mode). A Codex release that renames a feature fails `--disable` with an error, which is why `version` is pinned.
+- A `.codex/config.toml` in the PR is not loaded (checked locally with one that declared an MCP server).
+- **Environment**: the base allow-list plus `OPENAI_API_KEY`, `OPENAI_ORGANIZATION` and `OPENAI_PROJECT`, and `CODEX_HOME` set to the fresh folder.
+- The answer is the last `agent_message` of the turn. A `turn.failed` event, a non-zero exit, or no `turn.completed` means the run failed. Codex reports tokens but not cost.
+- The event log kept for the verdict record has every tool result removed.
+- Checked on Codex 0.167.0 against a scripted model on a local Responses API server: the tools offered, that our system prompt replaced Codex's, that `AGENTS.md` was not sent, that reads outside the workdir and through a symlink were refused, that a shell call was rejected, and that the model saw exactly the logged line ranges.
 
 ## 7. Modes: the trust ladder
 
@@ -569,8 +590,8 @@ The action job itself only fails on bad config or when it cannot reach GitHub at
 | Input | Default | Meaning |
 |---|---|---|
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
-| `harness` | `opencode` | Which coding agent runs the review: `opencode` or `claude-code` |
-| `harness-settings` | empty | Settings for the harness, one `key: value` per line (section 6.1): `model`, `version`, and `effort`, `base-url`, `auth` for Claude Code |
+| `harness` | `opencode` | Which coding agent runs the review: `opencode`, `claude-code` or `codex` |
+| `harness-settings` | empty | Settings for the harness, one `key: value` per line (section 6.1): `version`, `effort` and `base-url` (Claude Code and Codex), `auth` (Claude Code) |
 | `api-key` | empty | Key for the model, whatever the harness. The harness puts it where its agent reads it (section 6.1) |
 | `model` | the harness's default | Model that runs the review, in the harness's format (section 6.1). Same as `model` in `harness-settings` |
 | `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
@@ -692,6 +713,9 @@ needs-human-review/
       process.ts         shared: allow-listed env, run with a timeout
       opencode.ts        OpenCode adapter
       claude-code.ts     Claude Code adapter
+      codex.ts           Codex adapter
+      read-tools.ts      read, grep and glob inside one folder, with the range each read returned
+      read-tools-server.ts  stdio MCP server for read-tools, used by the Codex adapter
       fake.ts            fixed-answer harness for tests
   test/
     *.test.ts
@@ -725,7 +749,7 @@ The gates, the slicer, the verdict parser, the aggregation and the decision are 
 **v2**
 - Override log: spot when a human merges a PR the action flagged, or reverts a PR it merged, and log it, so teams can see when the action is too confident.
 - Agreement check: run each slice twice and treat any disagreement in decision or risk as needs a human (section 5.1).
-- Pi adapter. (Claude Code shipped in spec v0.8.)
+- Pi adapter: it could use the read-tools MCP server like Codex. (Claude Code shipped in spec v0.8, Codex in v0.9.)
 - GitHub Marketplace listing.
 - Shared setup and docs with the AINE Score action.
 

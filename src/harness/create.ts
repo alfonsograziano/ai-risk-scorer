@@ -1,4 +1,5 @@
 import { ClaudeCodeHarness } from './claude-code.ts';
+import { CodexHarness } from './codex.ts';
 import { FakeHarness } from './fake.ts';
 import { OpenCodeHarness } from './opencode.ts';
 import type { HarnessName, HarnessSettings } from './settings.ts';
@@ -21,6 +22,12 @@ export function createHarness(name: HarnessName, settings: HarnessSettings, apiK
         ...(settings.effort ? { effort: settings.effort } : {}),
         ...(settings['base-url'] ? { baseUrl: settings['base-url'] } : {}),
         ...(settings.auth ? { auth: settings.auth } : {}),
+      });
+    case 'codex':
+      return new CodexHarness({
+        ...key,
+        ...(settings.effort ? { effort: settings.effort } : {}),
+        ...(settings['base-url'] ? { baseUrl: settings['base-url'] } : {}),
       });
     case 'fake':
       return new FakeHarness(() => ({ error: 'fake harness: no model' }));

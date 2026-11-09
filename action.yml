@@ -10,25 +10,26 @@ inputs:
     description: shadow (comment only), advisory (labels and a status), or autonomous (merges safe PRs)
     default: shadow
   harness:
-    description: Coding agent that runs the review, opencode or claude-code
+    description: Coding agent that runs the review, opencode, claude-code or codex
     default: opencode
   model:
     description: |
       Model that runs the review, in the harness's format: provider/model for
-      opencode (opencode/deepseek-v4.1-flash), a model name or alias for
-      claude-code (claude-sonnet-5-5). Empty uses the harness's default.
+      opencode (opencode/deepseek-v4.1-flash), a model name for claude-code
+      (claude-sonnet-5-5) and codex (gpt-6.1-sol). Empty uses the harness's default.
     default: ''
   harness-settings:
     description: |
       Other settings for the harness, one "key: value" per line: version (the
       release to install) for every harness; effort, base-url and auth for
-      claude-code. "model" may also go here instead of the model input.
+      claude-code; effort and base-url for codex. "model" may also go here instead of the model input.
       Unset keys use the harness's defaults. See the README.
     default: ''
   api-key:
     description: |
       Key for the model, whatever the harness. The harness passes it to the agent
-      in the variable that agent reads (OPENCODE_API_KEY, ANTHROPIC_API_KEY...).
+      in the variable that agent reads (OPENCODE_API_KEY, ANTHROPIC_API_KEY,
+      OPENAI_API_KEY...).
       Pass it from a secret. Empty uses the agent's own variables from env.
     default: ''
   opencode-version:
@@ -203,6 +204,21 @@ runs:
         npm install --prefix "$dir" --no-audit --no-fund --loglevel=error "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
         echo "$dir/node_modules/.bin" >> "$GITHUB_PATH"
         "$dir/node_modules/.bin/claude" --version
+
+    - name: Install Codex
+      if: steps.setup.outputs.harness == 'codex'
+      shell: bash
+      env:
+        CODEX_VERSION: ${{ steps.setup.outputs.version }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/codex"
+        mkdir -p "$dir"
+        # Install from inside $dir, so an .npmrc in the PR checkout cannot change the registry.
+        cd "$dir"
+        npm install --prefix "$dir" --no-audit --no-fund --loglevel=error "@openai/codex@${CODEX_VERSION}"
+        echo "$dir/node_modules/.bin" >> "$GITHUB_PATH"
+        "$dir/node_modules/.bin/codex" --version
 
     - name: Score the pull request
       id: score

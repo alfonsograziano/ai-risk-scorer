@@ -1,7 +1,7 @@
 // Which harnesses exist and which settings each one takes. Pure: no I/O, so
 // the config reader can check settings without loading an adapter.
 
-export const HARNESS_NAMES = ['opencode', 'claude-code', 'fake'] as const;
+export const HARNESS_NAMES = ['opencode', 'claude-code', 'codex', 'fake'] as const;
 export type HarnessName = (typeof HARNESS_NAMES)[number];
 
 export type HarnessSettings = Record<string, string>;
@@ -32,7 +32,9 @@ const baseUrl = (v: string) => {
   return undefined;
 };
 const auth = (v: string) => (['x-api-key', 'bearer'].includes(v) ? undefined : `must be x-api-key or bearer, got "${v}"`);
-const effort = (v: string) => (['low', 'medium', 'high', 'xhigh', 'max'].includes(v) ? undefined : `must be low, medium, high, xhigh or max, got "${v}"`);
+const oneOf = (allowed: string[]) => (v: string) => (allowed.includes(v) ? undefined : `must be ${allowed.slice(0, -1).join(', ')} or ${allowed.at(-1)}, got "${v}"`);
+const effort = oneOf(['low', 'medium', 'high', 'xhigh', 'max']);
+const codexEffort = oneOf(['minimal', 'low', 'medium', 'high', 'xhigh']);
 
 /** Every harness takes a `model`. The rest is per harness. */
 export const HARNESS_SETTINGS: Record<HarnessName, Record<string, SettingSpec>> = {
@@ -48,6 +50,15 @@ export const HARNESS_SETTINGS: Record<HarnessName, Record<string, SettingSpec>> 
     'base-url': { default: '', check: baseUrl },
     // How api-key is sent. Empty means x-api-key for Anthropic's API, bearer when base-url is set.
     auth: { default: '', check: auth },
+  },
+  codex: {
+    // Codex's own default model in the pinned release.
+    model: { default: 'gpt-6.1-sol', check: oneWord },
+    version: { default: '0.167.0', check: version },
+    // model_reasoning_effort. Empty uses the model's default.
+    effort: { default: '', check: codexEffort },
+    // An OpenAI Responses API endpoint, for a gateway or proxy. Empty is OpenAI's own API.
+    'base-url': { default: '', check: baseUrl },
   },
   fake: {
     model: { default: 'fake/none', check: oneWord },

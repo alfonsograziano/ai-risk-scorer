@@ -77,7 +77,7 @@ test('bad harness settings are rejected', () => {
       return (e as ConfigError).problems;
     }
   };
-  assert.match(problems({ INPUT_HARNESS: 'pi' })[0] ?? '', /harness must be one of opencode, claude-code, fake/);
+  assert.match(problems({ INPUT_HARNESS: 'pi' })[0] ?? '', /harness must be one of opencode, claude-code, codex, fake/);
   assert.match(problems({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'modle: x' })[0] ?? '', /"modle" is not a setting of the claude-code harness/);
   assert.match(problems({ INPUT_HARNESS_SETTINGS: 'effort: high' })[0] ?? '', /"effort" is not a setting of the opencode harness/);
   assert.match(problems({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'version: latest' })[0] ?? '', /version must be a release number/);
@@ -133,4 +133,12 @@ test('the model input sets the model for any harness and is checked like the set
   assert.equal(c.harnessSettings.model, 'deepseek-v4.1-flash', 'the record shows the model with the other settings');
   assert.throws(() => readConfig({ INPUT_MODEL: 'deepseek' }), /model must look like provider\/model/);
   assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: '-x' }), /must be one word that does not start with a dash/);
+});
+
+test('codex takes model, version, effort and base-url, with its own effort levels', () => {
+  assert.deepEqual(readConfig({ INPUT_HARNESS: 'codex' }).harnessSettings, { model: 'gpt-6.1-sol', version: '0.167.0' });
+  const c = readConfig({ INPUT_HARNESS: 'codex', INPUT_MODEL: 'glm-5.3', INPUT_HARNESS_SETTINGS: 'effort: minimal\nbase-url: https://opencode.ai/inference/openai/v1' });
+  assert.deepEqual(c.harnessSettings, { model: 'glm-5.3', version: '0.167.0', effort: 'minimal', 'base-url': 'https://opencode.ai/inference/openai/v1' });
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'codex', INPUT_HARNESS_SETTINGS: 'effort: max' }), /effort must be minimal, low, medium, high or xhigh/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'codex', INPUT_HARNESS_SETTINGS: 'auth: bearer' }), /"auth" is not a setting of the codex harness/);
 });
