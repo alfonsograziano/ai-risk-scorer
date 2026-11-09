@@ -1,7 +1,5 @@
-import { spawn } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { isAbsolute, relative } from 'node:path';
 import type { FileRead } from '../types.ts';
+import { agentEnv, relativePath, runProcess, timeoutMessage } from './process.ts';
 import { HarnessError, type Harness, type HarnessInput, type HarnessResult } from './types.ts';
 
 export const AGENT_NAME = 'human-review';
@@ -44,23 +42,6 @@ interface ToolPart {
   state?: { status?: string; input?: Record<string, unknown>; output?: unknown };
 }
 
-function relativePath(workdir: string, p: string): string {
-  if (!isAbsolute(p)) return p.replace(/^\.\//, '');
-  for (const root of new Set([workdir, safeRealpath(workdir)])) {
-    const rel = relative(root, p);
-    if (!rel.startsWith('..') && !isAbsolute(rel)) return rel;
-  }
-  return p;
-}
-
-function safeRealpath(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
 /** Reads the real line range from the tool's own output, for example "Read file a.ts, lines 1-2000". */
 export function readFromToolPart(workdir: string, part: ToolPart): FileRead | undefined {
   if (part.tool !== 'read' || part.state?.status !== 'completed') return undefined;
@@ -79,21 +60,24 @@ export function readFromToolPart(workdir: string, part: ToolPart): FileRead | un
   return limit === undefined ? { path, fromLine: from } : { path, fromLine: from, toLine: from + limit - 1 };
 }
 
-/**
- * The environment the agent gets. Only what a CLI needs to run and to reach
- * the model: never the action inputs (INPUT_GITHUB_TOKEN), runner tokens or
- * anything else from the job. What the agent can read, the model can repeat.
- */
-const ENV_ALLOW = new Set(['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TZ', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']);
-const ENV_ALLOW_PATTERN = /^(XDG_[A-Z_]+|OPENCODE_[A-Z0-9_]+|[A-Z0-9_]+_API_KEY|[A-Z0-9_]+_BASE_URL|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)$/;
+/** OpenCode reaches its models with these: its own key, or a provider's. */
+const CREDENTIALS = /^(OPENCODE_[A-Z0-9_]+|[A-Z0-9_]+_API_KEY|[A-Z0-9_]+_BASE_URL|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)$/;
 
 export function harnessEnv(source: Record<string, string | undefined>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(source)) {
-    if (v === undefined || k.startsWith('INPUT_') || k.startsWith('GITHUB_') || k.startsWith('ACTIONS_') || k.startsWith('RUNNER_')) continue;
-    if (ENV_ALLOW.has(k) || ENV_ALLOW_PATTERN.test(k)) env[k] = v;
-  }
-  return env;
+  return agentEnv(source, CREDENTIALS);
+}
+
+/** Provider variables that do not follow the PROVIDER_API_KEY pattern. */
+const KEY_VARIABLES: Record<string, string> = {
+  opencode: 'OPENCODE_API_KEY',
+  'opencode-go': 'OPENCODE_API_KEY',
+  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
+};
+
+/** The variable OpenCode reads the key from, for the provider in `model` (provider/model). */
+export function keyVariable(model: string): string {
+  const provider = model.split('/')[0] ?? '';
+  return KEY_VARIABLES[provider] ?? `${provider.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
 }
 
 /**
@@ -167,15 +151,19 @@ export function parseEvents(workdir: string, stdout: string): ParsedEvents {
 export class OpenCodeHarness implements Harness {
   readonly name = 'opencode';
   readonly #bin: string;
+  readonly #apiKey: string | undefined;
 
-  constructor(bin = process.env.OPENCODE_BIN || 'opencode') {
+  constructor(settings: { apiKey?: string } = {}, bin = process.env.OPENCODE_BIN || 'opencode') {
     this.#bin = bin;
+    this.#apiKey = settings.apiKey || undefined;
   }
 
-  run(input: HarnessInput): Promise<HarnessResult> {
+  async run(input: HarnessInput): Promise<HarnessResult> {
     const started = Date.now();
     const env = {
       ...harnessEnv(process.env),
+      // The api-key input goes where the model's provider looks for it, over any value in the job env.
+      ...(this.#apiKey ? { [keyVariable(input.model)]: this.#apiKey } : {}),
       // OpenCode takes its project root from PWD, not from the process cwd.
       PWD: input.workdir,
       OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig(input.systemPrompt, input.model)),
@@ -185,42 +173,23 @@ export class OpenCodeHarness implements Harness {
     };
     const args = ['run', '--standalone', '--agent', AGENT_NAME, '--model', input.model, '--format', 'json', input.userMessage];
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.#bin, args, { cwd: input.workdir, env, stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-      child.stdout.on('data', (d: Buffer) => (stdout += d.toString('utf8')));
-      child.stderr.on('data', (d: Buffer) => (stderr += d.toString('utf8')));
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGKILL');
-      }, input.timeoutMs);
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(new HarnessError(`could not start opencode: ${err.message}`));
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        const raw = redactEvents(stdout);
-        if (timedOut) return reject(new HarnessError(`timed out after ${Math.round(input.timeoutMs / 60_000)} minutes`, raw));
-        const parsed = parseEvents(input.workdir, stdout);
-        if (code !== 0) {
-          const why = [...parsed.errors, stderr.trim().slice(-500)].filter((s) => s !== '').join('; ') || 'no error message';
-          return reject(new HarnessError(`opencode exited with code ${code}: ${why}`, raw));
-        }
-        if (parsed.errors.length > 0) return reject(new HarnessError(`opencode reported an error: ${parsed.errors.join('; ')}`, raw));
-        if (parsed.finalText.trim() === '') return reject(new HarnessError('the model gave no final answer', raw));
-        resolve({
-          finalText: parsed.finalText,
-          raw,
-          durationMs: Date.now() - started,
-          reads: parsed.reads,
-          costUsd: parsed.costUsd,
-          tokens: parsed.tokens,
-        });
-      });
-    });
+    const { code, stdout, stderr, timedOut } = await runProcess('opencode', this.#bin, args, { cwd: input.workdir, env, timeoutMs: input.timeoutMs });
+    const raw = redactEvents(stdout);
+    if (timedOut) throw new HarnessError(timeoutMessage(input.timeoutMs), raw);
+    const parsed = parseEvents(input.workdir, stdout);
+    if (code !== 0) {
+      const why = [...parsed.errors, stderr.trim().slice(-500)].filter((s) => s !== '').join('; ') || 'no error message';
+      throw new HarnessError(`opencode exited with code ${code}: ${why}`, raw);
+    }
+    if (parsed.errors.length > 0) throw new HarnessError(`opencode reported an error: ${parsed.errors.join('; ')}`, raw);
+    if (parsed.finalText.trim() === '') throw new HarnessError('the model gave no final answer', raw);
+    return {
+      finalText: parsed.finalText,
+      raw,
+      durationMs: Date.now() - started,
+      reads: parsed.reads,
+      costUsd: parsed.costUsd,
+      tokens: parsed.tokens,
+    };
   }
 }

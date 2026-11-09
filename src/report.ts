@@ -96,6 +96,7 @@ export function verdictRecord(r: ReportInput, config: Config, pr: { number: numb
     mode: r.mode,
     model: config.model,
     harness: config.harness,
+    harnessSettings: config.harnessSettings,
     mergeAllowed: r.result.mergeAllowed,
     action: r.action,
     stoppedAt: r.result.stoppedAt,

@@ -35,10 +35,22 @@ jobs:
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v1
-        env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
           mode: shadow
+          # The model key, whatever the harness. The harness passes it to the agent.
+          api-key: ${{ secrets.OPENCODE_API_KEY }}
+          # The coding agent that runs the review, and its settings. Leave out
+          # any key to get the harness's default.
+          harness: opencode # or claude-code
+          harness-settings: |
+            model: opencode/deepseek-v4.1-flash
+            version: 2.2.5
+          # For Claude Code with the same OpenCode key, through OpenCode's endpoint:
+          # harness: claude-code
+          # harness-settings: |
+          #   model: claude-sonnet-5-5
+          #   base-url: https://opencode.ai/inference/anthropic
+          # With an Anthropic key, leave out base-url.
           protected-paths: |
             src/payments/**
             **/migrations/**

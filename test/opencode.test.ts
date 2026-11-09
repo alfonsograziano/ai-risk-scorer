@@ -84,3 +84,13 @@ test('tool output is removed from the kept event log', async () => {
   assert.ok(raw.includes('"path":"src/a.ts"'));
   assert.ok(raw.includes('Thinking out loud.'));
 });
+
+test('api-key goes in the variable of the model provider', async () => {
+  const { keyVariable } = await import('../src/harness/opencode.ts');
+  assert.equal(keyVariable('opencode/deepseek-v4.1-flash'), 'OPENCODE_API_KEY');
+  assert.equal(keyVariable('opencode-go/kimi-k3'), 'OPENCODE_API_KEY');
+  assert.equal(keyVariable('anthropic/claude-sonnet-5-5'), 'ANTHROPIC_API_KEY');
+  assert.equal(keyVariable('openai/gpt-6'), 'OPENAI_API_KEY');
+  assert.equal(keyVariable('google/gemini-3-pro'), 'GOOGLE_GENERATIVE_AI_API_KEY');
+  assert.equal(keyVariable('deep-infra/x'), 'DEEP_INFRA_API_KEY');
+});

@@ -2,24 +2,25 @@
 // writes a results table to eval/results.md. Hard-gate scenarios cost nothing;
 // the others are one small reviewer run each.
 //
-//   node scripts/eval-sandbox.ts [--model opencode/deepseek-v4.1-flash] [--only find-user-null]
+//   node scripts/eval-sandbox.ts [--harness claude-code] [--model ...] [--only find-user-null]
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs, styleText } from 'node:util';
-import { OpenCodeHarness } from '../src/harness/opencode.ts';
+import { createHarness } from '../src/harness/create.ts';
 import { readConfig } from '../src/inputs.ts';
 import { stars, verdictRecord } from '../src/report.ts';
 import { scorePullRequest } from '../src/score.ts';
 import { git } from '../src/workspace.ts';
 import { makeSandbox, SCENARIOS } from './make-sandbox.ts';
 
-const { values } = parseArgs({ options: { model: { type: 'string' }, only: { type: 'string', multiple: true, default: [] } } });
+const { values } = parseArgs({ options: { harness: { type: 'string', default: 'opencode' }, model: { type: 'string' }, only: { type: 'string', multiple: true, default: [] } } });
 const config = readConfig({
   INPUT_MODE: 'shadow',
   INPUT_PROTECTED_PATHS: 'src/payments/**',
-  // Local runs use the console login, which serves Go models as `opencode/...`.
-  INPUT_MODEL: values.model ?? 'opencode/deepseek-v4.1-flash',
+  INPUT_HARNESS: values.harness,
+  // Each harness's default model, unless --model says otherwise.
+  INPUT_HARNESS_SETTINGS: values.model ? `model: ${values.model}` : '',
 });
 
 const root = await mkdtemp(join(tmpdir(), 'ars-eval-'));
@@ -46,7 +47,7 @@ for (const s of SCENARIOS) {
       pr: { number: 0, title: s.title, body: s.body, author: 'sandbox', authorIsBot: false, baseRef: 'main', headSha },
       facts: { isFork: false, labels: [] },
       config,
-      harness: new OpenCodeHarness(),
+      harness: createHarness(config.harness, config.harnessSettings, config.apiKey),
       readBaseFile: async (p) => git(repo, ['show', `${baseSha}:${p}`]),
       lock: true,
       log: (line) => console.log(styleText('dim', `  ${line}`)),
@@ -72,7 +73,7 @@ await rm(root, { recursive: true, force: true });
 const table = [
   `# Sandbox eval`,
   '',
-  `Model: \`${config.model}\` · ${new Date().toISOString().slice(0, 10)} · ${right} of ${total} as expected · total cost $${cost.toFixed(4)}`,
+  `Harness: \`${config.harness}\` · model: \`${config.model}\` · ${new Date().toISOString().slice(0, 10)} · ${right} of ${total} as expected · total cost $${cost.toFixed(4)}`,
   '',
   '| Scenario | Expected | Got | | Decided by | Risk | Confidence | Cost | Why we expect it |',
   '|---|---|---|---|---|---|---|---|---|',

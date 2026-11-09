@@ -1,6 +1,6 @@
 # Needs Human Review — Spec
 
-Status: v1 built, 2026-11-02 (spec v0.7). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
+Status: v1 built, 2026-11-02 (spec v0.8). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
 
 ## 1. What it is
 
@@ -21,7 +21,7 @@ The main users are teams whose PRs are often written by coding agents. They want
 - One well-built default prompt, which teams can fully replace or extend.
 - Fail safe: any error, timeout or unclear answer hands off to a human.
 - Three trust levels (shadow, advisory, autonomous), with shadow as the default.
-- Harness-agnostic. v1 ships with OpenCode. The design leaves room for Pi and Claude Code.
+- Harness-agnostic. Ships with OpenCode and Claude Code. The design leaves room for Pi.
 - Pure TypeScript, no build step, no runtime dependencies.
 
 ### Non-goals (v1)
@@ -348,7 +348,7 @@ interface HarnessInput {
   systemPrompt: string;   // parts 1 + 2 + 3 from section 4
   userMessage: string;    // part 4: short, fixed, no diff
   workdir: string;        // read-only repo at the head SHA, with the review folder inside
-  model: string;          // e.g. "opencode/deepseek-v4.1-flash"
+  model: string;          // from harness-settings, e.g. "opencode/deepseek-v4.1-flash"
   timeoutMs: number;
 }
 
@@ -370,11 +370,34 @@ interface FileRead {
 
 One `run` is one reviewer: one slice, or the integrator. The action calls it as many times as section 4.7 needs. The harness never has to know about slices, so an adapter stays small.
 
-v1 ships `opencode`. `pi` and `claude-code` are planned (section 14). The `harness` input picks one.
+The `harness` input picks the adapter: `opencode` (default) or `claude-code`. `pi` is planned (section 14).
 
-### 6.2 OpenCode in v1
+Everything that depends on the harness goes in one input, `harness-settings`: one `key: value` per line, blank lines and `#` comments skipped. The value is everything after the first colon, so a Bedrock ARN works as a model. Each harness declares the settings it takes, their defaults and how they are checked. An unknown key, a key set twice or a bad value is a config error, so a typo cannot silently fall back to a default. A key with an empty value counts as not set. A `model` may not start with `-`, since it is passed to the CLI as a flag value.
 
-- The action installs a pinned OpenCode release (`opencode-version` input, default `2.2.5`) from github.com/anomalyco/opencode. OpenCode 2 is not on npm.
+| Setting | `opencode` | `claude-code` |
+|---|---|---|
+| `model` | `opencode/deepseek-v4.1-flash` (must be `provider/model`) | `claude-sonnet-5-5` (an alias like `sonnet` also works) |
+| `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the `@anthropic-ai/claude-code` release to install |
+| `effort` | not taken | empty (the model's default), or `low`, `medium`, `high`, `xhigh`, `max` |
+| `base-url` | not taken | empty (Anthropic's API), or an Anthropic-compatible endpoint: `https`, or `http` on localhost only, with no credentials, query or fragment (the URL goes into the verdict record) |
+| `auth` | not taken | how `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set |
+
+`version` must be a release number (`1.2.3`), never `latest`, so a run is repeatable. The first step of the action (`src/setup.ts`) reads the config, fails the job on a bad one before anything is installed, and tells the install steps which harness and release to install.
+
+The key is not a setting. Settings go into the verdict record; a key must not. It has its own input, `api-key`, the same for every harness. The adapter passes it to the agent in the variable that agent reads, over any value of that variable in the job env:
+
+- `opencode`: the variable of the provider in `model`. `opencode/` and `opencode-go/` use `OPENCODE_API_KEY`, `google/` uses `GOOGLE_GENERATIVE_AI_API_KEY`, and any other provider uses `<PROVIDER>_API_KEY` (`anthropic/` uses `ANTHROPIC_API_KEY`). OpenCode does not take `base-url` yet: OpenCode 2 ignored the v1 `provider.options.baseURL` config in a local test.
+- `claude-code`: `ANTHROPIC_API_KEY` (sent as `x-api-key`) or `ANTHROPIC_AUTH_TOKEN` (sent as a bearer token), per `auth`. The other two key variables (`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, and `CLAUDE_CODE_OAUTH_TOKEN`) are removed from the agent's env, so only that key is sent. `base-url` becomes `ANTHROPIC_BASE_URL`. This is how one key reaches the model through a gateway: with an OpenCode Console key, `base-url: https://opencode.ai/inference/anthropic` and the default bearer auth.
+
+With `api-key` empty, the agent reads its own variables from the job env, as before. The setup step masks the key in the log, in case it was pasted in as text rather than passed from a secret.
+
+The v1.0 inputs `model` and `opencode-version` still work, so existing workflows keep running. `model` sets `model` for any harness; `opencode-version` sets `version` and only with `opencode`. Setting the same thing in both places is a config error.
+
+Each harness gets its own credentials through an allow-list (sections 6.2 and 6.3). Every adapter shares the base list of what a CLI needs to run (`PATH`, `HOME`, locale, temp and proxy variables, `XDG_*`) and never passes `INPUT_*`, `GITHUB_*`, `ACTIONS_*` or `RUNNER_*`.
+
+### 6.2 OpenCode
+
+- The action installs a pinned OpenCode release (`version` setting, default `2.2.5`) from github.com/anomalyco/opencode. OpenCode 2 is not on npm.
 - It passes the config inline (`OPENCODE_CONFIG_CONTENT`) with one custom agent, `human-review`. The agent's `system` is the system prompt. Its `permissions` start with a deny-all rule, then allow only `read`, `grep` and `glob` back (later rules win). `policies` deny MCP servers, skills, plugins and integrations. OpenCode then does not even offer the other tools to the model.
 - The agent process gets an allow-listed environment: what a CLI needs (`PATH`, `HOME`, locale, temp and proxy variables, `XDG_*`) and the model's credentials (`OPENCODE_*`, `*_API_KEY`, `*_BASE_URL`, `AWS_*`, `GOOGLE_*`, `AZURE_*`). Never `INPUT_*` (that holds the GitHub token), `GITHUB_*`, `ACTIONS_*` or `RUNNER_*`. Whatever the agent can read, the model can repeat.
 - The raw event log kept for the verdict record has every tool's output removed. It keeps which tools ran on which paths and the model's text, never file content.
@@ -383,6 +406,23 @@ v1 ships `opencode`. `pi` and `claude-code` are planned (section 14). The `harne
 - The reads for the proof-of-reading check come from completed `read` tool calls in the JSON event stream. The line range is taken from the tool's own output ("Read file x, lines 1-2000"), not from what the model asked for.
 - The key comes from the `OPENCODE_API_KEY` secret. The default model is `opencode/deepseek-v4.1-flash` on OpenCode Zen, which bills the key's workspace per use. Zen works with a plain API key in CI. OpenCode Go models (`opencode-go/...`) need a Go subscription on the key's workspace and are meant for OpenCode's own apps, so they are not the default. The action never logs the key.
 - Each run has a hard timeout (`slice-timeout-minutes`, default 10) that kills the process. The whole AI step also has a limit (`timeout-minutes`, default 30). A timeout means needs a human.
+
+### 6.3 Claude Code
+
+- The action installs a pinned `@anthropic-ai/claude-code` release from npm (`version` setting, default `2.1.319`) into `$RUNNER_TEMP`. `npm install` runs from inside that folder, so an `.npmrc` in the PR checkout cannot point it at another registry.
+- It runs `claude --print` headless in the checked-out repo, with:
+  - `--restricted`: drops every tool that runs commands or code and WebFetch, ignores the user, project and local settings files (so a `.claude/settings.json` in the PR cannot add a hook or loosen permissions), and keeps the file tools inside the workdir, so the agent cannot read `/proc/self/environ` or the runner's home.
+  - `--tools Read,Grep,Glob` and `--allowedTools Read,Grep,Glob` with `--permission-mode dontAsk`: the model is offered only those three tools, and anything else is denied instead of asked.
+  - `--strict-mcp-config` with no `--mcp-config`, so no MCP server loads, not even one from a `.mcp.json` in the PR. `--disable-slash-commands` turns off skills.
+  - `--system-prompt-file`: the system prompt replaces Claude Code's own. It is read from a file so a long custom prompt does not hit the argument size limit.
+  - `--max-turns 80`, `--no-session-persistence`, `--output-format stream-json --verbose`, and `--` before the PR message.
+- Environment: `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`, so a `CLAUDE.md` in the PR never reaches the model as instructions, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`. `CLAUDE_CONFIG_DIR` is a fresh temp folder per run, removed after it, so nothing from the runner's `~/.claude` (plugins, settings, sessions) loads. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `DISABLE_AUTOUPDATER=1` keep it from updating itself or sending telemetry.
+- Credentials allowed through: `ANTHROPIC_*` (the API key, base URL, Foundry and Vertex settings), `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CODE_SKIP_*_AUTH`, `AWS_*`, `GOOGLE_*`, `GCLOUD_PROJECT`, `CLOUD_ML_REGION`, `VERTEX_REGION_*` and `AZURE_*`. Nothing else, including other harnesses' keys.
+- Proof of reading comes from successful `Read` tool results in the stream, never from what the model asked for. First the structured result Claude Code attaches to the tool result (`file.startLine`, `file.numLines`); when one message holds several results, the line numbers in the text the tool returned. A read whose range cannot be told from the result does not count, so the check fails and a human reviews the PR. Failed reads, Grep and Glob never count.
+- The answer is the `result` field of the final `result` event. A run counts as failed when that event says `is_error: true`, even if its subtype is `success` (Claude Code reports an invalid key that way), when the subtype is anything else (for example `error_max_turns`), when the process exits non-zero, or when there is no result event.
+- The event log kept for the verdict record has every tool result removed, like OpenCode's.
+- Claude Code's Read tool also stops at 2,000 lines per call and cuts lines longer than 2,000 characters, so the long-line rule in section 4.6 applies unchanged.
+- The same timeouts as OpenCode apply.
 
 ## 7. Modes: the trust ladder
 
@@ -529,9 +569,11 @@ The action job itself only fails on bad config or when it cannot reach GitHub at
 | Input | Default | Meaning |
 |---|---|---|
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
-| `harness` | `opencode` | Which coding agent runs the review |
-| `model` | `opencode/deepseek-v4.1-flash` | Model, in the harness's format |
-| `opencode-version` | `2.2.5` | OpenCode release to install |
+| `harness` | `opencode` | Which coding agent runs the review: `opencode` or `claude-code` |
+| `harness-settings` | empty | Settings for the harness, one `key: value` per line (section 6.1): `model`, `version`, and `effort`, `base-url`, `auth` for Claude Code |
+| `api-key` | empty | Key for the model, whatever the harness. The harness puts it where its agent reads it (section 6.1) |
+| `model` | empty | Deprecated: use `model` in `harness-settings` |
+| `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, status and merge |
 | `protected-paths` | empty | Globs that always need a human, one per line |
 | `self-protected-paths` | empty | Extra paths added to the always-on list in G4 |
@@ -614,7 +656,7 @@ The checkout gives the action the git history to compute the diff, and gives the
 
 ### 12.2 Action type
 
-A composite action (`action.yml`). Its steps: set up Node 26, install the pinned OpenCode, run `node $GITHUB_ACTION_PATH/src/main.ts`. A composite action is the simplest way to install the harness and run TypeScript without a build.
+A composite action (`action.yml`). Its steps: set up Node 26, check the config and pick the harness (`node src/setup.ts`), install the pinned release of that harness, run `node $GITHUB_ACTION_PATH/src/main.ts`. A composite action is the simplest way to install the harness and run TypeScript without a build.
 
 ### 12.3 Repo layout
 
@@ -629,6 +671,7 @@ needs-human-review/
     contract.md          fixed output contract
   src/
     main.ts              entry point, wires everything
+    setup.ts             first step: check the config, pick what to install
     inputs.ts            read and validate inputs
     github.ts            small REST client on fetch
     context.ts           find the PR, head SHA, check runs
@@ -644,7 +687,11 @@ needs-human-review/
     report.ts            comment, summary, artifact
     harness/
       types.ts           Harness interface
+      settings.ts        harness names, their settings and defaults
+      create.ts          harness name + settings -> adapter
+      process.ts         shared: allow-listed env, run with a timeout
       opencode.ts        OpenCode adapter
+      claude-code.ts     Claude Code adapter
       fake.ts            fixed-answer harness for tests
   test/
     *.test.ts
@@ -678,7 +725,7 @@ The gates, the slicer, the verdict parser, the aggregation and the decision are 
 **v2**
 - Override log: spot when a human merges a PR the action flagged, or reverts a PR it merged, and log it, so teams can see when the action is too confident.
 - Agreement check: run each slice twice and treat any disagreement in decision or risk as needs a human (section 5.1).
-- Pi and Claude Code adapters.
+- Pi adapter. (Claude Code shipped in spec v0.8.)
 - GitHub Marketplace listing.
 - Shared setup and docs with the AINE Score action.
 

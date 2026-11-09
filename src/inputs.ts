@@ -1,10 +1,20 @@
 import { validateGlob } from './globs.ts';
+import { HARNESS_NAMES, parseSettings, resolveSettings, type HarnessName, type HarnessSettings } from './harness/settings.ts';
 import type { MergeMethod, Mode, Risk } from './types.ts';
 
 export interface Config {
   mode: Mode;
-  harness: 'opencode' | 'fake';
+  harness: HarnessName;
+  /** Settings for the harness, with its defaults filled in. Always has `model`. */
+  harnessSettings: HarnessSettings;
+  /** Same as harnessSettings.model, kept here because the report and record show it. */
   model: string;
+  /**
+   * The model key from the api-key input. The harness passes it to the agent
+   * under the variable it reads. A secret: never logged, never in the record.
+   * Empty means the agent's own variables in the job env are used.
+   */
+  apiKey: string;
   githubToken: string;
   protectedPaths: string[];
   selfProtectedPaths: string[];
@@ -57,6 +67,32 @@ export function parseList(value: string): string[] {
     .filter((l) => l !== '' && !l.startsWith('#'));
 }
 
+/**
+ * Reads `harness-settings`, plus the two inputs it replaced: `model` and
+ * `opencode-version` still work, so workflows written for v1.0 keep running.
+ * Setting the same thing both ways is an error, not a silent pick.
+ */
+function readHarnessSettings(env: Env, harness: HarnessName, problems: string[]): HarnessSettings {
+  const parsed = parseSettings(env.INPUT_HARNESS_SETTINGS ?? '');
+  problems.push(...parsed.problems);
+  const given = parsed.settings;
+  const legacy: [input: string, key: string][] = [['model', 'model'], ['opencode-version', 'version']];
+  for (const [input, key] of legacy) {
+    const v = raw(env, input);
+    if (v === '') continue;
+    if (input === 'opencode-version' && harness !== 'opencode') {
+      problems.push(`opencode-version only applies to the opencode harness; set "version" in harness-settings instead`);
+    } else if (Object.hasOwn(given, key)) {
+      problems.push(`set ${input} or "${key}" in harness-settings, not both`);
+    } else {
+      given[key] = v;
+    }
+  }
+  const resolved = resolveSettings(harness, given);
+  problems.push(...resolved.problems);
+  return resolved.settings;
+}
+
 export function readConfig(env: Env): Config {
   const problems: string[] = [];
 
@@ -101,10 +137,15 @@ export function readConfig(env: Env): Config {
     return list;
   };
 
+  const harness = oneOf('harness', HARNESS_NAMES, 'opencode');
+  const harnessSettings = readHarnessSettings(env, harness, problems);
+
   const config: Config = {
     mode: oneOf('mode', ['shadow', 'advisory', 'autonomous'] as const, 'shadow'),
-    harness: oneOf('harness', ['opencode', 'fake'] as const, 'opencode'),
-    model: raw(env, 'model') || 'opencode/deepseek-v4.1-flash',
+    harness,
+    harnessSettings,
+    model: harnessSettings.model ?? '',
+    apiKey: raw(env, 'api-key'),
     githubToken: raw(env, 'github-token'),
     protectedPaths: globs('protected-paths'),
     selfProtectedPaths: globs('self-protected-paths'),
@@ -138,10 +179,6 @@ export function readConfig(env: Env): Config {
   if (config.customInstructions && config.customInstructionsFile) {
     problems.push('set custom-instructions or custom-instructions-file, not both');
   }
-  if (!/^[^/\s]+\/\S+$/.test(config.model)) {
-    problems.push(`model must look like provider/model, got "${config.model}"`);
-  }
-
   if (problems.length > 0) throw new ConfigError(problems);
   return config;
 }

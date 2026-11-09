@@ -10,14 +10,26 @@ inputs:
     description: shadow (comment only), advisory (labels and a status), or autonomous (merges safe PRs)
     default: shadow
   harness:
-    description: Coding agent that runs the review. Only opencode in v1.
+    description: Coding agent that runs the review, opencode or claude-code
     default: opencode
+  harness-settings:
+    description: |
+      Settings for the harness, one "key: value" per line. Every harness takes
+      model and version (the release to install); claude-code also takes effort,
+      base-url and auth. Unset keys use the harness's defaults. See the README.
+    default: ''
+  api-key:
+    description: |
+      Key for the model, whatever the harness. The harness passes it to the agent
+      in the variable that agent reads (OPENCODE_API_KEY, ANTHROPIC_API_KEY...).
+      Pass it from a secret. Empty uses the agent's own variables from env.
+    default: ''
   model:
-    description: Model in OpenCode format, provider/model
-    default: opencode/deepseek-v4.1-flash
+    description: Deprecated, use "model" in harness-settings. Still works.
+    default: ''
   opencode-version:
-    description: OpenCode release to install from github.com/anomalyco/opencode
-    default: 2.2.5
+    description: Deprecated, use "version" in harness-settings. Still works with the opencode harness.
+    default: ''
   github-token:
     description: Token for comments, labels, the status and the merge
     default: ${{ github.token }}
@@ -119,11 +131,47 @@ runs:
       with:
         node-version: 26
 
+    - name: Check the config
+      id: setup
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/setup.ts"
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_HARNESS: ${{ inputs.harness }}
+        INPUT_HARNESS_SETTINGS: ${{ inputs.harness-settings }}
+        INPUT_API_KEY: ${{ inputs.api-key }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_OPENCODE_VERSION: ${{ inputs.opencode-version }}
+        INPUT_PROTECTED_PATHS: ${{ inputs.protected-paths }}
+        INPUT_SELF_PROTECTED_PATHS: ${{ inputs.self-protected-paths }}
+        INPUT_MAX_LINES_CHANGED: ${{ inputs.max-lines-changed }}
+        INPUT_MAX_FILES_CHANGED: ${{ inputs.max-files-changed }}
+        INPUT_GENERATED_PATHS: ${{ inputs.generated-paths }}
+        INPUT_GENERATED_DEFAULTS: ${{ inputs.generated-defaults }}
+        INPUT_SYSTEM_PROMPT: ${{ inputs.system-prompt }}
+        INPUT_SYSTEM_PROMPT_FILE: ${{ inputs.system-prompt-file }}
+        INPUT_CUSTOM_INSTRUCTIONS: ${{ inputs.custom-instructions }}
+        INPUT_CUSTOM_INSTRUCTIONS_FILE: ${{ inputs.custom-instructions-file }}
+        INPUT_MAX_RISK_TO_MERGE: ${{ inputs.max-risk-to-merge }}
+        INPUT_MIN_CONFIDENCE: ${{ inputs.min-confidence }}
+        INPUT_SLICE_MAX_TOKENS: ${{ inputs.slice-max-tokens }}
+        INPUT_MAX_SLICES: ${{ inputs.max-slices }}
+        INPUT_MAX_PARALLEL: ${{ inputs.max-parallel }}
+        INPUT_SLICE_TIMEOUT_MINUTES: ${{ inputs.slice-timeout-minutes }}
+        INPUT_TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        INPUT_REQUIRED_CHECKS: ${{ inputs.required-checks }}
+        INPUT_CI_WAIT_MINUTES: ${{ inputs.ci-wait-minutes }}
+        INPUT_BASE_BRANCHES: ${{ inputs.base-branches }}
+        INPUT_ALLOW_FORKS: ${{ inputs.allow-forks }}
+        INPUT_SKIP_LABEL: ${{ inputs.skip-label }}
+        INPUT_MERGE_METHOD: ${{ inputs.merge-method }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+
     - name: Install OpenCode
-      if: inputs.harness == 'opencode'
+      if: steps.setup.outputs.harness == 'opencode'
       shell: bash
       env:
-        OPENCODE_VERSION: ${{ inputs.opencode-version }}
+        OPENCODE_VERSION: ${{ steps.setup.outputs.version }}
       run: |
         set -euo pipefail
         case "$(uname -m)" in
@@ -137,6 +185,21 @@ runs:
         echo "$dir" >> "$GITHUB_PATH"
         "$dir/opencode" --version
 
+    - name: Install Claude Code
+      if: steps.setup.outputs.harness == 'claude-code'
+      shell: bash
+      env:
+        CLAUDE_CODE_VERSION: ${{ steps.setup.outputs.version }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/claude-code"
+        mkdir -p "$dir"
+        # Install from inside $dir, so an .npmrc in the PR checkout cannot change the registry.
+        cd "$dir"
+        npm install --prefix "$dir" --no-audit --no-fund --loglevel=error "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+        echo "$dir/node_modules/.bin" >> "$GITHUB_PATH"
+        "$dir/node_modules/.bin/claude" --version
+
     - name: Score the pull request
       id: score
       shell: bash
@@ -144,7 +207,10 @@ runs:
       env:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_HARNESS: ${{ inputs.harness }}
+        INPUT_HARNESS_SETTINGS: ${{ inputs.harness-settings }}
+        INPUT_API_KEY: ${{ inputs.api-key }}
         INPUT_MODEL: ${{ inputs.model }}
+        INPUT_OPENCODE_VERSION: ${{ inputs.opencode-version }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_PROTECTED_PATHS: ${{ inputs.protected-paths }}
         INPUT_SELF_PROTECTED_PATHS: ${{ inputs.self-protected-paths }}

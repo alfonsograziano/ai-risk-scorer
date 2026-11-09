@@ -4,15 +4,16 @@
 //
 //   node scripts/local-review.ts --repo ../my-repo --base main --head my-branch
 //
-// Options: --title, --body, --model, --mode, --protected <glob> (repeat),
+// Options: --title, --body, --harness (opencode or claude-code), --model,
+// --effort, --base-url, --auth (claude-code), --mode, --protected <glob> (repeat),
 // --max-lines, --max-files, --slice-max-tokens, --custom-instructions,
 // --dry (fake harness, no model call), --json <file> (write the full record).
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs, styleText } from 'node:util';
+import { createHarness } from '../src/harness/create.ts';
 import { FakeHarness } from '../src/harness/fake.ts';
-import { OpenCodeHarness } from '../src/harness/opencode.ts';
 import { readConfig } from '../src/inputs.ts';
 import { renderReport, verdictRecord } from '../src/report.ts';
 import { scorePullRequest } from '../src/score.ts';
@@ -25,7 +26,11 @@ const { values } = parseArgs({
     head: { type: 'string', default: 'HEAD' },
     title: { type: 'string' },
     body: { type: 'string', default: '' },
+    harness: { type: 'string', default: 'opencode' },
     model: { type: 'string' },
+    effort: { type: 'string' },
+    'base-url': { type: 'string' },
+    auth: { type: 'string' },
     mode: { type: 'string', default: 'autonomous' },
     protected: { type: 'string', multiple: true, default: [] },
     'max-lines': { type: 'string' },
@@ -39,13 +44,20 @@ const { values } = parseArgs({
 });
 
 if (values.help) {
-  console.log('Usage: node scripts/local-review.ts --repo <path> --base <ref> --head <ref> [--title ...] [--model ...] [--dry] [--json out.json]');
+  console.log('Usage: node scripts/local-review.ts --repo <path> --base <ref> --head <ref> [--title ...] [--harness opencode|claude-code] [--model ...] [--dry] [--json out.json]');
   process.exit(0);
 }
 
-// The default is the Zen model, the same one CI uses. Locally OpenCode takes
-// it from your console login, or from OPENCODE_API_KEY if that is set.
-const env: Record<string, string> = { INPUT_MODE: values.mode, INPUT_MODEL: values.model ?? 'opencode/deepseek-v4.1-flash' };
+// Each harness has the same default model as in CI. Locally OpenCode takes
+// the key from your console login, or from OPENCODE_API_KEY if that is set.
+// Claude Code needs ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN or cloud credentials.
+// API_KEY, if set, is the generic api-key input: the harness puts it where its agent reads it.
+const given = { model: values.model, effort: values.effort, 'base-url': values['base-url'], auth: values.auth };
+const settings = Object.entries(given)
+  .filter(([, v]) => v)
+  .map(([k, v]) => `${k}: ${v}`)
+  .join('\n');
+const env: Record<string, string> = { INPUT_MODE: values.mode, INPUT_HARNESS: values.harness, INPUT_HARNESS_SETTINGS: settings, INPUT_API_KEY: process.env.API_KEY ?? '' };
 if (values.protected.length > 0) env.INPUT_PROTECTED_PATHS = values.protected.join('\n');
 if (values['max-lines']) env.INPUT_MAX_LINES_CHANGED = values['max-lines'];
 if (values['max-files']) env.INPUT_MAX_FILES_CHANGED = values['max-files'];
@@ -63,7 +75,7 @@ await git(repo, ['worktree', 'add', '--detach', '-q', worktree, headSha]);
 
 const harness = values.dry
   ? new FakeHarness(() => ({ error: 'dry run: no model was called' }))
-  : new OpenCodeHarness();
+  : createHarness(config.harness, config.harnessSettings, config.apiKey);
 
 try {
   const result = await scorePullRequest({

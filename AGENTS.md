@@ -22,7 +22,7 @@ npm run local -- --help   # run the full review locally against a git repo
 ## Layout
 
 - `src/` the action. `src/main.ts` is the entry point for GitHub Actions.
-- `src/harness/` adapters for coding agents. `opencode.ts` is the real one, `fake.ts` is for tests.
+- `src/harness/` adapters for coding agents: `opencode.ts` and `claude-code.ts` are the real ones, `fake.ts` is for tests. `settings.ts` lists each harness's settings and defaults, `create.ts` builds the adapter. A new harness needs an entry in both, an install step in `action.yml`, and a credentials allow-list.
 - `prompts/` the default system prompt and the fixed output contract.
 - `test/` `node:test` tests, one file per module.
 - `scripts/` local tools: the local runner, the sandbox builder and the README diagram renderer.
