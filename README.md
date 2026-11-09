@@ -82,7 +82,7 @@ jobs:
           persist-credentials: false
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           mode: shadow
           # Claude Code with claude-sonnet-5-5, unless you set harness and model.
@@ -96,7 +96,7 @@ jobs:
 No Anthropic key? Claude Code can reach models through a gateway instead. With an [OpenCode](https://opencode.ai) key in `API_KEY`, swap the action step for this one:
 
 ```yaml
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           mode: shadow
           model: glm-5.3
@@ -111,7 +111,7 @@ Through OpenCode's endpoint, `model` can be any model your OpenCode workspace ha
 
 3. Merge that workflow into your default branch. GitHub only runs `workflow_run` workflows from the default branch, which is the point (see [Security](#security)).
 
-`@v1` follows the latest compatible 1.x release. To stay on one exact version, use a release tag such as `@v1.0.1`, or a full commit SHA. Avoid `@main`: it changes with every commit.
+`@v2` follows the latest compatible 2.x release. To stay on one exact version, use a release tag such as `@v2.0.0`, or a full commit SHA. Avoid `@main`: it changes with every commit.
 
 Start in `shadow` mode. The action comments on every PR with its answer and what it would have done, and changes nothing. Leave it there for a few weeks, compare its verdicts with what your reviewers decided, and only then move up.
 
@@ -247,7 +247,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
 **Claude Code with an Anthropic API key** (the quick start):
 
 ```yaml
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           api-key: ${{ secrets.API_KEY }}
 ```
@@ -255,7 +255,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
 **Claude Code with a Claude subscription.** Run `claude setup-token` on your machine and store the token it prints as `API_KEY`. The review then counts against that plan's usage limits, not per-use billing:
 
 ```yaml
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           api-key: ${{ secrets.API_KEY }}
           harness-settings: |
@@ -269,7 +269,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: us-east-1
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           harness-settings: |
             provider: bedrock
@@ -282,7 +282,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           harness-settings: |
             provider: vertex
@@ -297,7 +297,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           model: claude-sonnet-5-5
           harness-settings: |
@@ -310,7 +310,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
 **Codex with an OpenAI API key:**
 
 ```yaml
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           harness: codex
           api-key: ${{ secrets.API_KEY }}
@@ -319,7 +319,7 @@ Every way the agents' own GitHub Actions sign in works here too, through the sam
 **Codex on Azure OpenAI.** Your Azure key in `api-key`, and your resource's v1 endpoint, without `/responses` (Codex adds it). `model` is your deployment name:
 
 ```yaml
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           harness: codex
           model: my-gpt-deployment
@@ -458,7 +458,7 @@ The diagram at the top of this README is built from [`docs/diagram/how-it-works.
 node scripts/render-diagram.ts
 ```
 
-## Limits in v1
+## Limits
 
 - Three harnesses: OpenCode, Claude Code and Codex. Pi is planned. The eval results above are from OpenCode; Claude Code and Codex have not been through the sandbox eval yet.
 - No override log yet. Every run leaves a JSON record, which is the raw material for it.

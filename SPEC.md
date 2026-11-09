@@ -528,7 +528,7 @@ When the review fails, the comment says so plainly under the "Human review requi
 ### 8.2 Logs
 
 - **Job summary:** the same content as the comment, plus timings.
-- **Artifact:** `needs-human-review-verdict.json` with the PR number, head SHA, mode, every gate result, the parsed verdict, the final decision, the model, the harness, the duration and the harness event log without tool output (section 6.2). This is the raw material for the v2 override log.
+- **Artifact:** `needs-human-review-verdict-pr<number>-<sha>-<id>.json`, uploaded under the same name (plus the run attempt), so two runs of the action in one workflow run never clash. It holds the PR number, head SHA, mode, every gate result, the parsed verdict, the final decision, the model, the harness, the duration and the harness event log without tool output (section 6.2). This is the raw material for the v2 override log.
 
 ### 8.3 Action outputs
 
@@ -659,7 +659,7 @@ jobs:
           persist-credentials: false
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           mode: shadow
           api-key: ${{ secrets.API_KEY }}

@@ -1,4 +1,5 @@
 // Entry point for GitHub Actions. Run by action.yml as `node src/main.ts`.
+import { randomBytes } from 'node:crypto';
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,7 +33,7 @@ async function summary(markdown: string): Promise<void> {
 async function skip(reason: string): Promise<void> {
   log(`Nothing to do: ${reason}.`);
   await summary(`Needs Human Review: nothing to do, ${reason}.`);
-  await setOutputs({ decision: 'skipped', 'stopped-at': 'skipped', risk: '', confidence: '', 'verdict-json': '', 'record-path': '' });
+  await setOutputs({ decision: 'skipped', 'stopped-at': 'skipped', risk: '', confidence: '', 'verdict-json': '', 'record-path': '', 'record-name': '' });
 }
 
 async function run(config: Config): Promise<void> {
@@ -131,7 +132,9 @@ async function run(config: Config): Promise<void> {
   if (config.comment) await gh.upsertComment(pr.number, COMMENT_MARKER, markdown);
   await summary(markdown);
 
-  const recordPath = join(env.RUNNER_TEMP ?? repoDir, 'needs-human-review-verdict.json');
+  // Unique per run of the action, so two runs in one workflow run (a matrix over harnesses, say) never share a file or an artifact name.
+  const recordName = `needs-human-review-verdict-pr${pr.number}-${headSha.slice(0, 7)}-${randomBytes(4).toString('hex')}`;
+  const recordPath = join(env.RUNNER_TEMP ?? repoDir, `${recordName}.json`);
   await writeFile(recordPath, JSON.stringify(verdictRecord(report, config, { number: pr.number, title: pr.title }), null, 2));
   await setOutputs({
     decision: action === 'merged' ? 'merged' : result.mergeAllowed ? 'safe' : 'needs_human',
@@ -140,6 +143,7 @@ async function run(config: Config): Promise<void> {
     'stopped-at': result.stoppedAt,
     'verdict-json': JSON.stringify(result.aggregate),
     'record-path': recordPath,
+    'record-name': recordName,
   });
   log(`Done: ${action === 'merged' ? 'merged' : result.mergeAllowed ? 'safe' : 'needs a human'} (stopped at ${result.stoppedAt}).`);
 }

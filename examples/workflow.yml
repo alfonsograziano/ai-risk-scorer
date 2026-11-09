@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
           # Fork PRs need this since checkout v7. The action reads the files, never runs them.
           allow-unsafe-pr-checkout: true
-      - uses: alfonsograziano/needs-human-review@v1
+      - uses: alfonsograziano/needs-human-review@v2
         with:
           mode: shadow
           # The model key, whatever the harness: here an Anthropic key.

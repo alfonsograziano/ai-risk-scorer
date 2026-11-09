@@ -258,6 +258,6 @@ runs:
       if: always() && steps.score.outputs.record-path != ''
       uses: actions/upload-artifact@v4
       with:
-        name: needs-human-review-verdict-${{ github.run_id }}-${{ github.run_attempt }}
+        name: ${{ steps.score.outputs.record-name }}-attempt${{ github.run_attempt }}
         path: ${{ steps.score.outputs.record-path }}
         if-no-files-found: ignore
