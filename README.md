@@ -107,7 +107,7 @@ To use Claude Code with the same OpenCode key, swap the action step for this one
             src/payments/**
 ```
 
-With an Anthropic key, pass that as `api-key` and leave out `base-url`. Through OpenCode's endpoint, `model` can be any model your OpenCode workspace has turned on, Claude or not (for example `deepseek-v4.1-flash`); a model the workspace has turned off fails with `403 Model access is disabled`, and the PR goes to a human.
+With an Anthropic key, pass that as `api-key` and leave out `base-url`. Through OpenCode's endpoint, `model` can be any model your OpenCode workspace has turned on, Claude or not (for example `deepseek-v4.1-flash`); a model the workspace has turned off fails with `403 Model access is disabled`, and the PR goes to a human. Not every model behind that endpoint works with Claude Code: on 2026-11-09, `glm-5.3` gave the expected answer on both demo PRs; `deepseek-v4.1-flash` and `minimax-m3` rejected Claude Code's requests; and `kimi-k3` looped on reads and never answered on one PR. A failure always ends in "needs a human", never a merge.
 
 3. Merge that workflow into your default branch. GitHub only runs `workflow_run` workflows from the default branch, which is the point (see [Security](#security)).
 
