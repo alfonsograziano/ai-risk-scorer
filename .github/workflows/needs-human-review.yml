@@ -32,9 +32,9 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+          # No allow-unsafe-pr-checkout: this repo expects no fork PRs, so checkout v7
+          # refusing them (the run fails, nothing is posted or merged) is fine.
           persist-credentials: false
-          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
-          allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v2
         with:
           mode: shadow
