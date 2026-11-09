@@ -47,7 +47,7 @@ test('bad config is rejected with every problem listed', () => {
 test('the harness defaults to claude-code with its own defaults', () => {
   const c = readConfig({});
   assert.equal(c.harness, 'claude-code');
-  assert.deepEqual(c.harnessSettings, { model: 'claude-sonnet-5-5', version: '2.1.319' });
+  assert.deepEqual(c.harnessSettings, { model: 'claude-sonnet-5-5', version: '2.1.319', provider: 'anthropic' });
   assert.equal(c.model, 'claude-sonnet-5-5');
   assert.deepEqual(readConfig({ INPUT_HARNESS: 'opencode' }).harnessSettings, { model: 'opencode/deepseek-v4.1-flash', version: '2.2.5' });
 });
@@ -55,13 +55,13 @@ test('the harness defaults to claude-code with its own defaults', () => {
 
 test('claude-code takes its settings from harness-settings', () => {
   const d = readConfig({ INPUT_HARNESS: 'claude-code' });
-  assert.deepEqual(d.harnessSettings, { model: 'claude-sonnet-5-5', version: '2.1.319' });
+  assert.deepEqual(d.harnessSettings, { model: 'claude-sonnet-5-5', version: '2.1.319', provider: 'anthropic' });
   const c = readConfig({
     INPUT_HARNESS: 'claude-code',
     INPUT_HARNESS_SETTINGS: '# pick the model\nmodel: claude-opus-5-5\n\nversion: 2.1.320\neffort: high\n',
   });
   assert.equal(c.harness, 'claude-code');
-  assert.deepEqual(c.harnessSettings, { model: 'claude-opus-5-5', version: '2.1.320', effort: 'high' });
+  assert.deepEqual(c.harnessSettings, { model: 'claude-opus-5-5', version: '2.1.320', effort: 'high', provider: 'anthropic' });
   assert.equal(c.model, 'claude-opus-5-5');
 });
 
@@ -109,7 +109,7 @@ test('base-url must be https, or http on localhost, and hold no credentials', ()
   assert.throws(() => ok('http://gw.example.com'), /must use https/);
   assert.throws(() => ok('not a url'), /must be a URL/);
   assert.throws(() => ok('https://user:pw@gw.example.com'), /must not hold credentials/);
-  assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'auth: basic' }), /auth must be x-api-key or bearer/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'auth: basic' }), /auth must be x-api-key, bearer or oauth/);
   assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'base-url: https://x.example' }), /"base-url" is not a setting of the opencode harness/);
 });
 
@@ -141,4 +141,22 @@ test('codex takes model, version, effort and base-url, with its own effort level
   assert.deepEqual(c.harnessSettings, { model: 'glm-5.3', version: '0.167.0', effort: 'minimal', 'base-url': 'https://opencode.ai/inference/openai/v1' });
   assert.throws(() => readConfig({ INPUT_HARNESS: 'codex', INPUT_HARNESS_SETTINGS: 'effort: max' }), /effort must be minimal, low, medium, high or xhigh/);
   assert.throws(() => readConfig({ INPUT_HARNESS: 'codex', INPUT_HARNESS_SETTINGS: 'auth: bearer' }), /"auth" is not a setting of the codex harness/);
+});
+
+test('claude-code runs on Anthropic, Bedrock, Vertex AI or Foundry', () => {
+  const claude = (settings: string, extra: Record<string, string> = {}) => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: settings, ...extra });
+  assert.equal(claude('').harnessSettings.provider, 'anthropic');
+  assert.deepEqual(claude('provider: bedrock\nregion: us-east-1').harnessSettings, { model: 'sonnet', version: '2.1.319', provider: 'bedrock', region: 'us-east-1' }, 'on a cloud the default model is the alias');
+  assert.equal(claude('provider: bedrock', { INPUT_MODEL: 'us.anthropic.claude-sonnet-5-5-v1:0' }).model, 'us.anthropic.claude-sonnet-5-5-v1:0');
+  assert.equal(claude('provider: vertex\nregion: global\nproject: my-project-123').harnessSettings.project, 'my-project-123');
+  assert.equal(claude('provider: foundry\nbase-url: https://my-resource.services.ai.azure.com').harnessSettings.provider, 'foundry');
+  assert.equal(claude('auth: oauth', { INPUT_API_KEY: 'sk-ant-oat01-x' }).harnessSettings.auth, 'oauth');
+  assert.throws(() => claude('provider: azure'), /provider must be anthropic, bedrock, vertex or foundry/);
+  assert.throws(() => claude('provider: bedrock\nauth: bearer'), /auth only applies to provider anthropic/);
+  assert.throws(() => claude('region: us-east-1'), /region only applies to provider bedrock or vertex/);
+  assert.throws(() => claude('provider: bedrock\nproject: my-project-123'), /project only applies to provider vertex/);
+  assert.throws(() => claude('provider: vertex', { INPUT_API_KEY: 'k' }), /Vertex AI takes no key/);
+  assert.throws(() => claude('auth: oauth\nbase-url: https://gw.example.com'), /only works with Anthropic's API/);
+  assert.throws(() => claude('provider: bedrock\nregion: US East'), /region must look like/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_MODEL: 'google-vertex/gemini-3-pro', INPUT_API_KEY: 'k' }), /Vertex AI takes no key/);
 });

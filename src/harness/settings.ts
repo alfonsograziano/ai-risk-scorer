@@ -31,10 +31,16 @@ const baseUrl = (v: string) => {
   if (u.username || u.password || u.search || u.hash) return 'must not hold credentials, a query or a fragment; pass the key in the api-key input';
   return undefined;
 };
-const auth = (v: string) => (['x-api-key', 'bearer'].includes(v) ? undefined : `must be x-api-key or bearer, got "${v}"`);
 const oneOf = (allowed: string[]) => (v: string) => (allowed.includes(v) ? undefined : `must be ${allowed.slice(0, -1).join(', ')} or ${allowed.at(-1)}, got "${v}"`);
 const effort = oneOf(['low', 'medium', 'high', 'xhigh', 'max']);
 const codexEffort = oneOf(['minimal', 'low', 'medium', 'high', 'xhigh']);
+const auth = oneOf(['x-api-key', 'bearer', 'oauth']);
+const claudeProvider = oneOf(['anthropic', 'bedrock', 'vertex', 'foundry']);
+const region = (v: string) => (/^[a-z]{2,}(-[a-z0-9]+)+$|^global$/.test(v) ? undefined : `must look like us-east-1, europe-west4 or global, got "${v}"`);
+const project = (v: string) => (/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(v) ? undefined : `must be a Google Cloud project ID, got "${v}"`);
+
+/** Where Claude Code's model runs. Each cloud has Claude Code's own CLAUDE_CODE_USE_* switch. */
+export type ClaudeProvider = 'anthropic' | 'bedrock' | 'vertex' | 'foundry';
 
 /** Every harness takes a `model`. The rest is per harness. */
 export const HARNESS_SETTINGS: Record<HarnessName, Record<string, SettingSpec>> = {
@@ -48,8 +54,15 @@ export const HARNESS_SETTINGS: Record<HarnessName, Record<string, SettingSpec>> 
     effort: { default: '', check: effort },
     // The Anthropic-compatible endpoint, for a gateway or proxy. Empty is Anthropic's own API.
     'base-url': { default: '', check: baseUrl },
-    // How api-key is sent. Empty means x-api-key for Anthropic's API, bearer when base-url is set.
+    // Where the model runs: Anthropic's API (or a gateway), Amazon Bedrock, Google Vertex AI or Microsoft Foundry.
+    provider: { default: 'anthropic', check: claudeProvider },
+    // How api-key is sent to Anthropic's API: x-api-key, bearer (gateways) or oauth (a Claude subscription
+    // token from `claude setup-token`). Empty means x-api-key, or bearer when base-url is set.
     auth: { default: '', check: auth },
+    // The cloud region: AWS_REGION for bedrock, CLOUD_ML_REGION for vertex. Empty uses the job env.
+    region: { default: '', check: region },
+    // The Google Cloud project for vertex. Empty uses ANTHROPIC_VERTEX_PROJECT_ID or GOOGLE_CLOUD_PROJECT from the job env.
+    project: { default: '', check: project },
   },
   codex: {
     // Codex's own default model in the pinned release.
@@ -104,5 +117,27 @@ export function resolveSettings(harness: HarnessName, given: HarnessSettings): {
     if (problem) problems.push(`harness-settings: ${key} ${problem}`);
     settings[key] = value;
   }
+  // On a cloud, Claude Code maps the alias to that cloud's model ID; claude-sonnet-5-5 is only an Anthropic API ID.
+  if (harness === 'claude-code' && settings.provider !== 'anthropic' && !given.model) settings.model = 'sonnet';
   return { settings, problems };
+}
+
+/**
+ * Checks settings that only make sense together, and api-key against them.
+ * Runs on the resolved settings, so defaults count.
+ */
+export function harnessProblems(harness: HarnessName, settings: HarnessSettings, hasApiKey: boolean): string[] {
+  const problems: string[] = [];
+  if (harness === 'claude-code') {
+    const provider = settings.provider ?? 'anthropic';
+    if (settings.auth && provider !== 'anthropic') problems.push(`harness-settings: auth only applies to provider anthropic; ${provider} has its own credentials`);
+    if (settings.region && provider !== 'bedrock' && provider !== 'vertex') problems.push('harness-settings: region only applies to provider bedrock or vertex');
+    if (settings.project && provider !== 'vertex') problems.push('harness-settings: project only applies to provider vertex');
+    if (provider === 'vertex' && hasApiKey) problems.push('api-key: Vertex AI takes no key; sign in with google-github-actions/auth before this step and leave api-key empty');
+    if (settings.auth === 'oauth' && settings['base-url']) problems.push('harness-settings: auth oauth is a Claude subscription token, which only works with Anthropic\'s API; remove base-url');
+  }
+  if (harness === 'opencode' && hasApiKey && /^google-vertex/.test(settings.model ?? '')) {
+    problems.push('api-key: Vertex AI takes no key; sign in with google-github-actions/auth before this step and leave api-key empty');
+  }
+  return problems;
 }

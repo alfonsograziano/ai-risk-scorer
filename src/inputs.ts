@@ -1,5 +1,5 @@
 import { validateGlob } from './globs.ts';
-import { HARNESS_NAMES, parseSettings, resolveSettings, type HarnessName, type HarnessSettings } from './harness/settings.ts';
+import { HARNESS_NAMES, harnessProblems, parseSettings, resolveSettings, type HarnessName, type HarnessSettings } from './harness/settings.ts';
 import type { MergeMethod, Mode, Risk } from './types.ts';
 
 export interface Config {
@@ -175,6 +175,7 @@ export function readConfig(env: Env): Config {
   if (config.customInstructions && config.customInstructionsFile) {
     problems.push('set custom-instructions or custom-instructions-file, not both');
   }
+  problems.push(...harnessProblems(config.harness, config.harnessSettings, config.apiKey !== ''));
   if (problems.length > 0) throw new ConfigError(problems);
   return config;
 }

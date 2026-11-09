@@ -2,7 +2,7 @@ import { ClaudeCodeHarness } from './claude-code.ts';
 import { CodexHarness } from './codex.ts';
 import { FakeHarness } from './fake.ts';
 import { OpenCodeHarness } from './opencode.ts';
-import type { HarnessName, HarnessSettings } from './settings.ts';
+import type { ClaudeProvider, HarnessName, HarnessSettings } from './settings.ts';
 import type { Harness } from './types.ts';
 
 /**
@@ -22,6 +22,9 @@ export function createHarness(name: HarnessName, settings: HarnessSettings, apiK
         ...(settings.effort ? { effort: settings.effort } : {}),
         ...(settings['base-url'] ? { baseUrl: settings['base-url'] } : {}),
         ...(settings.auth ? { auth: settings.auth } : {}),
+        ...(settings.provider ? { provider: settings.provider as ClaudeProvider } : {}),
+        ...(settings.region ? { region: settings.region } : {}),
+        ...(settings.project ? { project: settings.project } : {}),
       });
     case 'codex':
       return new CodexHarness({

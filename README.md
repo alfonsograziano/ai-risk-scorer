@@ -214,9 +214,12 @@ The review runs inside a coding agent, the harness. `harness` picks which one, `
 | `model` (input or setting) | `claude-sonnet-5-5`, or any model name or alias Claude Code takes | `gpt-6.1-sol`, or any model the endpoint serves | `opencode/deepseek-v4.1-flash`, in `provider/model` format |
 | `version` | `2.1.319`, the Claude Code release to install from npm | `0.167.0`, the Codex release to install from npm | `2.2.5`, the OpenCode release to install |
 | `effort` | `low`, `medium`, `high`, `xhigh` or `max`. Empty uses the model's default | `minimal`, `low`, `medium`, `high` or `xhigh`. Empty uses the model's default | n/a |
-| `base-url` | An Anthropic-compatible endpoint, such as a gateway. Empty is Anthropic's API | An OpenAI Responses API endpoint, such as a gateway. Empty is OpenAI's API | n/a (not supported yet) |
-| `auth` | How `api-key` is sent: `x-api-key` or `bearer`. Empty means `x-api-key`, or `bearer` once `base-url` is set | n/a, always a bearer token | n/a |
-| `api-key` goes in | `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` for bearer auth | `OPENAI_API_KEY` | the provider's variable: `OPENCODE_API_KEY` for `opencode/...`, `ANTHROPIC_API_KEY` for `anthropic/...` |
+| `provider` | Where the model runs: `anthropic` (default), `bedrock`, `vertex` or `foundry`. See [Signing in](#signing-in) | n/a | n/a, the provider is part of `model` |
+| `base-url` | An endpoint for the provider: a gateway in front of Anthropic's API, or your Bedrock, Vertex AI or Foundry endpoint | An OpenAI Responses API endpoint: Azure OpenAI or a gateway. Empty is OpenAI's API | n/a (not supported yet) |
+| `auth` | How `api-key` is sent to Anthropic's API: `x-api-key`, `bearer` (gateways) or `oauth` (a Claude subscription token). Empty means `x-api-key`, or `bearer` once `base-url` is set | n/a, always a bearer token | n/a |
+| `region` | `bedrock` and `vertex` only: the cloud region. Empty uses the job env | n/a | n/a |
+| `project` | `vertex` only: the Google Cloud project. Empty uses the job env | n/a | n/a |
+| `api-key` goes in | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` or `CLAUDE_CODE_OAUTH_TOKEN` per `auth`; `AWS_BEARER_TOKEN_BEDROCK` on Bedrock; `ANTHROPIC_FOUNDRY_API_KEY` on Foundry | `OPENAI_API_KEY` | the provider's variable: `OPENCODE_API_KEY` for `opencode/...`, `ANTHROPIC_API_KEY` for `anthropic/...`, `AWS_BEARER_TOKEN_BEDROCK` for `amazon-bedrock/...` |
 
 ```yaml
         with:
@@ -227,15 +230,105 @@ The review runs inside a coding agent, the harness. `harness` picks which one, `
             version: 2.1.319
 ```
 
-The key has its own input, `api-key`, the same for every harness, so you can switch harness without renaming secrets. It is not a setting because settings are kept in the verdict record and a key must not be. The harness passes it to the agent in the variable that agent reads. Leave `api-key` empty to set the agent's own variables in `env` instead: for example, Claude Code on Bedrock or Vertex AI, or `CLAUDE_CODE_OAUTH_TOKEN`.
+The key has its own input, `api-key`, the same for every harness, so you can switch harness without renaming secrets. It is not a setting because settings are kept in the verdict record and a key must not be. The harness passes it to the agent in the variable that agent reads. Leave `api-key` empty when a cloud sign-in step provides the credentials instead.
 
 `base-url` is what lets one key work across harnesses. An OpenCode Console key reaches Claude models through `https://opencode.ai/inference/anthropic` (or `https://opencode.ai/inference/go/anthropic` with OpenCode Go), and Codex through `https://opencode.ai/inference/openai/v1`. A LiteLLM or company gateway works the same way. Codex only speaks OpenAI's Responses API, so its endpoint must serve that.
 
 A key the harness does not know, or a bad value, fails the job before anything is installed, so a typo never falls back to a default quietly. Pin `version` to an exact release; `latest` is refused, so every run is repeatable.
 
-Both harnesses get the same lockdown: the agent can only read, grep and glob inside the checkout. It has no shell, no web and no MCP servers, and the repo's own agent config is ignored. The details for each harness are in [Security](#security).
+Every harness gets the same lockdown: the agent can only read, grep and glob inside the checkout. It has no shell, no web and no MCP servers, and the repo's own agent config is ignored. The details for each harness are in [Security](#security).
 
 The model has its own input, `model`, since it is the setting you change most. It takes the harness's format and works for every harness. Putting `model` in `harness-settings` works too, but not both at once.
+
+### Signing in
+
+Every way the agents' own GitHub Actions sign in works here too, through the same inputs. Each example is the action step only; the rest of the workflow is the one in the [quick start](#quick-start). The cloud ones sign in with GitHub's OIDC, so there is no long-lived key: they need `id-token: write` in the job's `permissions`, next to the ones the quick start lists.
+
+**Claude Code with an Anthropic API key** (the quick start):
+
+```yaml
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          api-key: ${{ secrets.API_KEY }}
+```
+
+**Claude Code with a Claude subscription.** Run `claude setup-token` on your machine and store the token it prints as `API_KEY`. The review then counts against that plan's usage limits, not per-use billing:
+
+```yaml
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          api-key: ${{ secrets.API_KEY }}
+          harness-settings: |
+            auth: oauth
+```
+
+**Claude Code on Amazon Bedrock**, signed in with OIDC. `model` defaults to the `sonnet` alias, which Claude Code maps to Bedrock's model ID; set `model` to a Bedrock model or inference profile ID to pick one. A [Bedrock API key](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html) in `api-key` works too, without the AWS step:
+
+```yaml
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: us-east-1
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          harness-settings: |
+            provider: bedrock
+```
+
+**Claude Code on Google Vertex AI**, signed in with workload identity federation. Vertex AI takes no key, so leave `api-key` out. `project` defaults to the one the Google step sets. Put the Google step after the checkout, since the checkout cleans the folder; the action moves the credentials file it writes out of the checkout before the review starts, so the reviewer cannot open it:
+
+```yaml
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          harness-settings: |
+            provider: vertex
+            region: global
+```
+
+**Claude Code on Microsoft Foundry**, signed in with Azure OIDC, or with a Foundry key in `api-key` and no Azure step:
+
+```yaml
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          model: claude-sonnet-5-5
+          harness-settings: |
+            provider: foundry
+            base-url: https://my-resource.services.ai.azure.com
+```
+
+**Claude Code through a gateway** such as OpenCode, LiteLLM or your company's proxy: the key in `api-key`, the endpoint in `base-url`, sent as a bearer token. See the OpenCode example in the [quick start](#quick-start).
+
+**Codex with an OpenAI API key:**
+
+```yaml
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          harness: codex
+          api-key: ${{ secrets.API_KEY }}
+```
+
+**Codex on Azure OpenAI.** Your Azure key in `api-key`, and your resource's v1 endpoint, without `/responses` (Codex adds it). `model` is your deployment name:
+
+```yaml
+      - uses: alfonsograziano/needs-human-review@v1
+        with:
+          harness: codex
+          model: my-gpt-deployment
+          api-key: ${{ secrets.API_KEY }}
+          harness-settings: |
+            base-url: https://my-resource.openai.azure.com/openai/v1
+```
+
+**OpenCode with any provider's key.** `model` names the provider, and `api-key` goes in that provider's variable (`opencode/...` takes an OpenCode key, `anthropic/...` an Anthropic key, `openai/...` an OpenAI key). For Bedrock or Vertex AI, use the same cloud sign-in steps as above with an `amazon-bedrock/...` or `google-vertex/...` model and no `api-key`; Vertex AI also needs `VERTEX_LOCATION` in `env`.
 
 ## Inputs
 
@@ -244,7 +337,7 @@ The model has its own input, `model`, since it is the setting you change most. I
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
 | `harness` | `claude-code` | The coding agent that runs the review: `claude-code`, `codex` or `opencode` |
 | `model` | the harness's default | Model that runs the review, in the harness's format: `claude-sonnet-5-5` for Claude Code, `gpt-6.1-sol` for Codex, `opencode/deepseek-v4.1-flash` for OpenCode |
-| `harness-settings` | empty | Other `key: value` lines for the harness: `version`, and `effort` and `base-url` for Claude Code and Codex, `auth` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
+| `harness-settings` | empty | Other `key: value` lines for the harness: `version`, and `effort` and `base-url` for Claude Code and Codex, `provider`, `auth`, `region` and `project` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
 | `api-key` | empty | Key for the model, whatever the harness. Pass it from a secret. Empty uses the agent's own variables from `env` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, the status and the merge |
 | `protected-paths` | empty | Globs that always need a human, one per line |

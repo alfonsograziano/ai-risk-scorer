@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FileRead } from '../types.ts';
 import { agentEnv, relativePath, runProcess, timeoutMessage } from './process.ts';
+import type { ClaudeProvider } from './settings.ts';
 import { HarnessError, type Harness, type HarnessInput, type HarnessResult } from './types.ts';
 
 /** The only tools the reviewer gets. All three only read. */
@@ -48,32 +49,64 @@ export function claudeArgs(input: { userMessage: string; model: string; systemPr
  * Claude Code reaches the model with an Anthropic key or OAuth token, or
  * through Bedrock, Vertex AI or Foundry with that cloud's own credentials.
  */
-const CREDENTIALS = /^(ANTHROPIC_[A-Z0-9_]+|CLAUDE_CODE_(OAUTH_TOKEN|USE_BEDROCK|USE_VERTEX|USE_FOUNDRY|SKIP_[A-Z_]+_AUTH)|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|GCLOUD_PROJECT|CLOUD_ML_REGION|VERTEX_REGION_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)$/;
+const CREDENTIALS = /^(ANTHROPIC_[A-Z0-9_]+|CLAUDE_CODE_(OAUTH_TOKEN|SKIP_[A-Z_]+_AUTH)|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|GCLOUD_PROJECT|CLOUD_ML_REGION|VERTEX_REGION_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)$/;
 
-/** Where the model is and how to reach it, from the api-key input and the base-url and auth settings. */
+/** Where the model is and how to reach it, from the api-key input and the harness settings. */
 export interface Connection {
   apiKey?: string;
+  provider?: ClaudeProvider;
   baseUrl?: string;
   auth?: string;
+  region?: string;
+  project?: string;
 }
 
+/** Each provider's switch, base URL variable and the variables a key can travel in. */
+const PROVIDERS: Record<ClaudeProvider, { use?: string; baseUrl: string; keys: string[] }> = {
+  anthropic: { baseUrl: 'ANTHROPIC_BASE_URL', keys: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'] },
+  bedrock: { use: 'CLAUDE_CODE_USE_BEDROCK', baseUrl: 'ANTHROPIC_BEDROCK_BASE_URL', keys: ['AWS_BEARER_TOKEN_BEDROCK'] },
+  vertex: { use: 'CLAUDE_CODE_USE_VERTEX', baseUrl: 'ANTHROPIC_VERTEX_BASE_URL', keys: [] },
+  foundry: { use: 'CLAUDE_CODE_USE_FOUNDRY', baseUrl: 'ANTHROPIC_FOUNDRY_BASE_URL', keys: ['ANTHROPIC_FOUNDRY_API_KEY'] },
+};
+
 /**
- * The variable api-key goes in. Anthropic's API takes it as x-api-key
- * (ANTHROPIC_API_KEY). Gateways such as OpenCode Console want a bearer token
- * (ANTHROPIC_AUTH_TOKEN), so that is the default once base-url is set.
+ * The variable api-key goes in.
+ *
+ * - anthropic: x-api-key (ANTHROPIC_API_KEY) for Anthropic's API; a bearer
+ *   token (ANTHROPIC_AUTH_TOKEN) for gateways such as OpenCode Console, the
+ *   default once base-url is set; or oauth (CLAUDE_CODE_OAUTH_TOKEN), a Claude
+ *   subscription token from `claude setup-token`.
+ * - bedrock: a Bedrock API key (AWS_BEARER_TOKEN_BEDROCK). Without one, AWS credentials from the job env.
+ * - foundry: a Foundry key (ANTHROPIC_FOUNDRY_API_KEY). Without one, Azure credentials from the job env.
+ * - vertex: none. Google credentials only; the config check refuses api-key.
  */
-export function keyVariable(conn: Connection): 'ANTHROPIC_API_KEY' | 'ANTHROPIC_AUTH_TOKEN' {
+export function keyVariable(conn: Connection): string | undefined {
+  const provider = conn.provider ?? 'anthropic';
+  if (provider !== 'anthropic') return PROVIDERS[provider].keys[0];
   const auth = conn.auth || (conn.baseUrl ? 'bearer' : 'x-api-key');
-  return auth === 'bearer' ? 'ANTHROPIC_AUTH_TOKEN' : 'ANTHROPIC_API_KEY';
+  return auth === 'bearer' ? 'ANTHROPIC_AUTH_TOKEN' : auth === 'oauth' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY';
 }
 
 export function claudeEnv(source: Record<string, string | undefined>, configDir: string, conn: Connection = {}): Record<string, string> {
   const env = agentEnv(source, CREDENTIALS);
-  if (conn.baseUrl) env.ANTHROPIC_BASE_URL = conn.baseUrl;
-  if (conn.apiKey) {
+  const provider = conn.provider ?? 'anthropic';
+  const spec = PROVIDERS[provider];
+  // The provider setting decides where the model runs, not a CLAUDE_CODE_USE_* left in the job env.
+  for (const p of Object.values(PROVIDERS)) if (p.use) delete env[p.use];
+  if (spec.use) env[spec.use] = '1';
+  if (conn.baseUrl) env[spec.baseUrl] = conn.baseUrl;
+  if (provider === 'bedrock' && conn.region) env.AWS_REGION = conn.region;
+  if (provider === 'vertex') {
+    if (conn.region) env.CLOUD_ML_REGION = conn.region;
+    // google-github-actions/auth sets GOOGLE_CLOUD_PROJECT; Claude Code reads ANTHROPIC_VERTEX_PROJECT_ID.
+    const project = conn.project || env.ANTHROPIC_VERTEX_PROJECT_ID || env.GOOGLE_CLOUD_PROJECT;
+    if (project) env.ANTHROPIC_VERTEX_PROJECT_ID = project;
+  }
+  const variable = keyVariable(conn);
+  if (conn.apiKey && variable) {
     // api-key is the one key: drop any other from the job env, so only it is sent, and only one way.
-    for (const k of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN']) delete env[k];
-    env[keyVariable(conn)] = conn.apiKey;
+    for (const k of spec.keys) delete env[k];
+    env[variable] = conn.apiKey;
   }
   return {
     ...env,
@@ -245,7 +278,8 @@ export class ClaudeCodeHarness implements Harness {
   constructor(settings: { effort?: string } & Connection = {}, bin = process.env.CLAUDE_BIN || 'claude') {
     this.#bin = bin;
     this.#effort = settings.effort;
-    this.#conn = { apiKey: settings.apiKey, baseUrl: settings.baseUrl, auth: settings.auth };
+    const { effort: _, ...conn } = settings;
+    this.#conn = conn;
   }
 
   async run(input: HarnessInput): Promise<HarnessResult> {

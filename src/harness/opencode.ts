@@ -60,8 +60,8 @@ export function readFromToolPart(workdir: string, part: ToolPart): FileRead | un
   return limit === undefined ? { path, fromLine: from } : { path, fromLine: from, toLine: from + limit - 1 };
 }
 
-/** OpenCode reaches its models with these: its own key, or a provider's. */
-const CREDENTIALS = /^(OPENCODE_[A-Z0-9_]+|[A-Z0-9_]+_API_KEY|[A-Z0-9_]+_BASE_URL|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)$/;
+/** OpenCode reaches its models with these: its own key, a provider's, or a cloud's credentials (Bedrock, Vertex AI, Azure). */
+const CREDENTIALS = /^(OPENCODE_[A-Z0-9_]+|[A-Z0-9_]+_API_KEY|[A-Z0-9_]+_BASE_URL|AWS_[A-Z0-9_]+|GOOGLE_[A-Z0-9_]+|VERTEX_LOCATION|AZURE_[A-Z0-9_]+)$/;
 
 export function harnessEnv(source: Record<string, string | undefined>): Record<string, string> {
   return agentEnv(source, CREDENTIALS);
@@ -72,6 +72,8 @@ const KEY_VARIABLES: Record<string, string> = {
   opencode: 'OPENCODE_API_KEY',
   'opencode-go': 'OPENCODE_API_KEY',
   google: 'GOOGLE_GENERATIVE_AI_API_KEY',
+  // A Bedrock API key. Without api-key, OpenCode uses AWS credentials from the job env.
+  'amazon-bedrock': 'AWS_BEARER_TOKEN_BEDROCK',
 };
 
 /** The variable OpenCode reads the key from, for the provider in `model` (provider/model). */

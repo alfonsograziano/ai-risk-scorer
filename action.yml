@@ -22,8 +22,9 @@ inputs:
   harness-settings:
     description: |
       Other settings for the harness, one "key: value" per line: version (the
-      release to install) for every harness; effort, base-url and auth for
-      claude-code; effort and base-url for codex. "model" may also go here instead of the model input.
+      release to install) for every harness; effort, base-url, provider
+      (anthropic, bedrock, vertex, foundry), auth (x-api-key, bearer, oauth),
+      region and project for claude-code; effort and base-url for codex. "model" may also go here instead of the model input.
       Unset keys use the harness's defaults. See the README.
     default: ''
   api-key:

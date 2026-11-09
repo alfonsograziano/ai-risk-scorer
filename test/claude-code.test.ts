@@ -142,13 +142,13 @@ test('claudeEnv passes model credentials only, and turns off CLAUDE.md and memor
     'CLAUDE_CODE_DISABLE_CLAUDE_MDS',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
     'CLAUDE_CODE_OAUTH_TOKEN',
-    'CLAUDE_CODE_USE_BEDROCK',
     'CLAUDE_CONFIG_DIR',
     'DISABLE_AUTOUPDATER',
     'HOME',
     'PATH',
   ]);
   assert.equal(env.CLAUDE_CODE_DISABLE_CLAUDE_MDS, '1', 'the job cannot turn CLAUDE.md back on');
+  assert.equal(env.CLAUDE_CODE_USE_BEDROCK, undefined, 'the provider setting, not the job env, picks where the model runs');
   assert.equal(env.CLAUDE_CONFIG_DIR, '/tmp/cfg');
 });
 
@@ -237,4 +237,40 @@ test('file content cannot fake line numbers with a line separator', () => {
   // Line 2 of the file holds U+2028 and \r followed by what looks like more numbered lines.
   const text = '     1→a\n     2→b\u2028     3→fake\r     4→fake';
   assert.deepEqual(readFromResult('/work', { file_path: '/work/f.ts' }, { content: text }), { path: 'f.ts', fromLine: 1, toLine: 2 });
+});
+
+test('each provider gets its own switch, key variable, base URL and region', () => {
+  const job = { PATH: '/bin', ANTHROPIC_API_KEY: 'job', CLAUDE_CODE_USE_VERTEX: '1', AWS_ACCESS_KEY_ID: 'AKIA', AWS_SESSION_TOKEN: 's', AWS_REGION: 'eu-west-1', GOOGLE_CLOUD_PROJECT: 'gcp-proj', GOOGLE_APPLICATION_CREDENTIALS: '/t/creds.json', AWS_BEARER_TOKEN_BEDROCK: 'old' };
+  assert.equal(keyVariable({ auth: 'oauth' }), 'CLAUDE_CODE_OAUTH_TOKEN');
+  assert.equal(keyVariable({ provider: 'bedrock' }), 'AWS_BEARER_TOKEN_BEDROCK');
+  assert.equal(keyVariable({ provider: 'foundry' }), 'ANTHROPIC_FOUNDRY_API_KEY');
+  assert.equal(keyVariable({ provider: 'vertex' }), undefined);
+
+  const oauth = claudeEnv(job, '/c', { apiKey: 'sk-ant-oat01-x', auth: 'oauth' });
+  assert.equal(oauth.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-x');
+  assert.equal(oauth.ANTHROPIC_API_KEY, undefined, 'only the subscription token is sent');
+  assert.equal(oauth.CLAUDE_CODE_USE_VERTEX, undefined);
+
+  const oidc = claudeEnv(job, '/c', { provider: 'bedrock', region: 'us-east-1' });
+  assert.equal(oidc.CLAUDE_CODE_USE_BEDROCK, '1');
+  assert.equal(oidc.CLAUDE_CODE_USE_VERTEX, undefined);
+  assert.equal(oidc.AWS_REGION, 'us-east-1', 'the setting wins over the job env');
+  assert.equal(oidc.AWS_SESSION_TOKEN, 's', 'OIDC credentials from configure-aws-credentials pass through');
+  const bedrockKey = claudeEnv(job, '/c', { provider: 'bedrock', apiKey: 'bedrock-key', baseUrl: 'https://bedrock.gw.example' });
+  assert.equal(bedrockKey.AWS_BEARER_TOKEN_BEDROCK, 'bedrock-key');
+  assert.equal(bedrockKey.ANTHROPIC_BEDROCK_BASE_URL, 'https://bedrock.gw.example');
+  assert.equal(bedrockKey.ANTHROPIC_BASE_URL, undefined);
+
+  const vertex = claudeEnv(job, '/c', { provider: 'vertex', region: 'global' });
+  assert.equal(vertex.CLAUDE_CODE_USE_VERTEX, '1');
+  assert.equal(vertex.CLOUD_ML_REGION, 'global');
+  assert.equal(vertex.ANTHROPIC_VERTEX_PROJECT_ID, 'gcp-proj', 'the project google-github-actions/auth sets is used');
+  assert.equal(vertex.GOOGLE_APPLICATION_CREDENTIALS, '/t/creds.json');
+  assert.equal(claudeEnv(job, '/c', { provider: 'vertex', project: 'mine-123' }).ANTHROPIC_VERTEX_PROJECT_ID, 'mine-123');
+
+  const foundry = claudeEnv({ PATH: '/bin', AZURE_CLIENT_ID: 'c' }, '/c', { provider: 'foundry', baseUrl: 'https://r.services.ai.azure.com', apiKey: 'fk' });
+  assert.equal(foundry.CLAUDE_CODE_USE_FOUNDRY, '1');
+  assert.equal(foundry.ANTHROPIC_FOUNDRY_BASE_URL, 'https://r.services.ai.azure.com');
+  assert.equal(foundry.ANTHROPIC_FOUNDRY_API_KEY, 'fk');
+  assert.equal(foundry.AZURE_CLIENT_ID, 'c');
 });

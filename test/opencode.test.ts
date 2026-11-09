@@ -93,4 +93,5 @@ test('api-key goes in the variable of the model provider', async () => {
   assert.equal(keyVariable('openai/gpt-6'), 'OPENAI_API_KEY');
   assert.equal(keyVariable('google/gemini-3-pro'), 'GOOGLE_GENERATIVE_AI_API_KEY');
   assert.equal(keyVariable('deep-infra/x'), 'DEEP_INFRA_API_KEY');
+  assert.equal(keyVariable('amazon-bedrock/anthropic.claude-sonnet-5-5'), 'AWS_BEARER_TOKEN_BEDROCK');
 });
