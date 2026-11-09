@@ -391,7 +391,7 @@ The key is not a setting. Settings go into the verdict record; a key must not. I
 
 With `api-key` empty, the agent reads its own variables from the job env, as before. The setup step masks the key in the log, in case it was pasted in as text rather than passed from a secret.
 
-The v1.0 inputs `model` and `opencode-version` still work, so existing workflows keep running. `model` sets `model` for any harness; `opencode-version` sets `version` and only with `opencode`. Setting the same thing in both places is a config error.
+The model also has its own top-level input, `model`, since it is the setting teams change most. It sets `model` for any harness, in that harness's format. The v1.0 input `opencode-version` still works, so existing workflows keep running: it sets `version`, and only with `opencode`. Setting the same thing in both places (the input and `harness-settings`) is a config error.
 
 Each harness gets its own credentials through an allow-list (sections 6.2 and 6.3). Every adapter shares the base list of what a CLI needs to run (`PATH`, `HOME`, locale, temp and proxy variables, `XDG_*`) and never passes `INPUT_*`, `GITHUB_*`, `ACTIONS_*` or `RUNNER_*`.
 
@@ -572,7 +572,7 @@ The action job itself only fails on bad config or when it cannot reach GitHub at
 | `harness` | `opencode` | Which coding agent runs the review: `opencode` or `claude-code` |
 | `harness-settings` | empty | Settings for the harness, one `key: value` per line (section 6.1): `model`, `version`, and `effort`, `base-url`, `auth` for Claude Code |
 | `api-key` | empty | Key for the model, whatever the harness. The harness puts it where its agent reads it (section 6.1) |
-| `model` | empty | Deprecated: use `model` in `harness-settings` |
+| `model` | the harness's default | Model that runs the review, in the harness's format (section 6.1). Same as `model` in `harness-settings` |
 | `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, status and merge |
 | `protected-paths` | empty | Globs that always need a human, one per line |

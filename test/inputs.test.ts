@@ -87,7 +87,7 @@ test('bad harness settings are rejected', () => {
   assert.match(problems({ INPUT_HARNESS_SETTINGS: 'model: a/b\nmodel: c/d' })[0] ?? '', /sets "model" twice/);
 });
 
-test('the v1.0 model and opencode-version inputs still work, but not together with harness-settings', () => {
+test('the model and opencode-version inputs set the model and version, but not together with harness-settings', () => {
   const c = readConfig({ INPUT_MODEL: 'opencode/other', INPUT_OPENCODE_VERSION: '2.3.0' });
   assert.deepEqual(c.harnessSettings, { model: 'opencode/other', version: '2.3.0' });
   assert.equal(readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: 'claude-haiku-5-5' }).model, 'claude-haiku-5-5');
@@ -124,4 +124,13 @@ test('base-url cannot carry a query or fragment, since it lands in the verdict r
   const url = (u: string) => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: `base-url: ${u}` });
   assert.throws(() => url('https://gw.example.com/?key=sk-secret'), /must not hold credentials, a query or a fragment/);
   assert.throws(() => url('https://gw.example.com/#sk-secret'), /must not hold credentials, a query or a fragment/);
+});
+
+test('the model input sets the model for any harness and is checked like the setting', () => {
+  assert.equal(readConfig({ INPUT_MODEL: 'opencode/kimi-k3' }).harnessSettings.model, 'opencode/kimi-k3');
+  const c = readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: 'deepseek-v4.1-flash', INPUT_HARNESS_SETTINGS: 'base-url: https://opencode.ai/inference/anthropic' });
+  assert.equal(c.model, 'deepseek-v4.1-flash');
+  assert.equal(c.harnessSettings.model, 'deepseek-v4.1-flash', 'the record shows the model with the other settings');
+  assert.throws(() => readConfig({ INPUT_MODEL: 'deepseek' }), /model must look like provider\/model/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: '-x' }), /must be one word that does not start with a dash/);
 });

@@ -99,15 +99,15 @@ To use Claude Code with the same OpenCode key, swap the action step for this one
         with:
           mode: shadow
           harness: claude-code
+          model: claude-sonnet-5-5
           api-key: ${{ secrets.OPENCODE_API_KEY }}
           harness-settings: |
-            model: claude-sonnet-5-5
             base-url: https://opencode.ai/inference/anthropic
           protected-paths: |
             src/payments/**
 ```
 
-With an Anthropic key, pass that as `api-key` and leave out `base-url`.
+With an Anthropic key, pass that as `api-key` and leave out `base-url`. Through OpenCode's endpoint, `model` can be any model your OpenCode workspace has turned on, Claude or not (for example `deepseek-v4.1-flash`); a model the workspace has turned off fails with `403 Model access is disabled`, and the PR goes to a human.
 
 3. Merge that workflow into your default branch. GitHub only runs `workflow_run` workflows from the default branch, which is the point (see [Security](#security)).
 
@@ -207,11 +207,11 @@ Either way, the fixed output contract in [`prompts/contract.md`](prompts/contrac
 
 ## Choosing the harness
 
-The review runs inside a coding agent, the harness. `harness` picks which one, and `harness-settings` holds everything that depends on it, one `key: value` per line. Leave out any key to get the default.
+The review runs inside a coding agent, the harness. `harness` picks which one, `model` picks the model, in that harness's format, and `harness-settings` holds the other settings that depend on the harness, one `key: value` per line. Leave out any key to get the default.
 
 | Setting | `opencode` (default) | `claude-code` |
 |---|---|---|
-| `model` | `opencode/deepseek-v4.1-flash`, in `provider/model` format | `claude-sonnet-5-5`, or any model name or alias Claude Code takes |
+| `model` (input or setting) | `opencode/deepseek-v4.1-flash`, in `provider/model` format | `claude-sonnet-5-5`, or any model name or alias Claude Code takes |
 | `version` | `2.2.5`, the OpenCode release to install | `2.1.319`, the Claude Code release to install from npm |
 | `effort` | n/a | `low`, `medium`, `high`, `xhigh` or `max`. Empty uses the model's default |
 | `base-url` | n/a (not supported yet) | An Anthropic-compatible endpoint, such as a gateway. Empty is Anthropic's API |
@@ -221,8 +221,8 @@ The review runs inside a coding agent, the harness. `harness` picks which one, a
 ```yaml
         with:
           harness: claude-code
+          model: claude-opus-5-5
           harness-settings: |
-            model: claude-opus-5-5
             effort: high
             version: 2.1.319
 ```
@@ -235,7 +235,7 @@ A key the harness does not know, or a bad value, fails the job before anything i
 
 Both harnesses get the same lockdown: the agent can only read, grep and glob inside the checkout. It has no shell, no web and no MCP servers, and the repo's own agent config is ignored. The details for each harness are in [Security](#security).
 
-The `model` and `opencode-version` inputs from v1.0 still work, so existing workflows keep running. New workflows should use `harness-settings`.
+The model has its own input, `model`, since it is the setting you change most. It takes the harness's format and works for every harness. Putting `model` in `harness-settings` works too, but not both at once. The v1.0 `opencode-version` input still works with `opencode`; new workflows should use `version` in `harness-settings`.
 
 ## Inputs
 
@@ -243,9 +243,9 @@ The `model` and `opencode-version` inputs from v1.0 still work, so existing work
 |---|---|---|
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
 | `harness` | `opencode` | The coding agent that runs the review: `opencode` or `claude-code` |
-| `harness-settings` | empty | `key: value` lines for the harness: `model`, `version`, and `effort`, `base-url`, `auth` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
+| `model` | the harness's default | Model that runs the review, in the harness's format: `opencode/deepseek-v4.1-flash` for OpenCode, `claude-sonnet-5-5` for Claude Code |
+| `harness-settings` | empty | Other `key: value` lines for the harness: `version`, and `effort`, `base-url`, `auth` for Claude Code. See [Choosing the harness](#choosing-the-harness) |
 | `api-key` | empty | Key for the model, whatever the harness. Pass it from a secret. Empty uses the agent's own variables from `env` |
-| `model` | empty | Deprecated: use `model` in `harness-settings` |
 | `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, the status and the merge |
 | `protected-paths` | empty | Globs that always need a human, one per line |

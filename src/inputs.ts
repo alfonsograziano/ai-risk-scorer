@@ -68,16 +68,17 @@ export function parseList(value: string): string[] {
 }
 
 /**
- * Reads `harness-settings`, plus the two inputs it replaced: `model` and
- * `opencode-version` still work, so workflows written for v1.0 keep running.
- * Setting the same thing both ways is an error, not a silent pick.
+ * Reads `harness-settings`, plus two top-level inputs: `model`, the usual way
+ * to pick the model for any harness, and the v1.0 `opencode-version`, kept so
+ * old workflows keep running. Setting the same thing both ways is an error,
+ * not a silent pick.
  */
 function readHarnessSettings(env: Env, harness: HarnessName, problems: string[]): HarnessSettings {
   const parsed = parseSettings(env.INPUT_HARNESS_SETTINGS ?? '');
   problems.push(...parsed.problems);
   const given = parsed.settings;
-  const legacy: [input: string, key: string][] = [['model', 'model'], ['opencode-version', 'version']];
-  for (const [input, key] of legacy) {
+  const inputs: [input: string, key: string][] = [['model', 'model'], ['opencode-version', 'version']];
+  for (const [input, key] of inputs) {
     const v = raw(env, input);
     if (v === '') continue;
     if (input === 'opencode-version' && harness !== 'opencode') {

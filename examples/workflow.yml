@@ -39,16 +39,17 @@ jobs:
           mode: shadow
           # The model key, whatever the harness. The harness passes it to the agent.
           api-key: ${{ secrets.OPENCODE_API_KEY }}
-          # The coding agent that runs the review, and its settings. Leave out
-          # any key to get the harness's default.
+          # The coding agent that runs the review, the model, and the other
+          # harness settings. Leave any of them out to get the harness's default.
           harness: opencode # or claude-code
+          model: opencode/deepseek-v4.1-flash
           harness-settings: |
-            model: opencode/deepseek-v4.1-flash
             version: 2.2.5
-          # For Claude Code with the same OpenCode key, through OpenCode's endpoint:
+          # For Claude Code with the same OpenCode key, through OpenCode's endpoint.
+          # The model can be any one your OpenCode workspace has turned on:
           # harness: claude-code
+          # model: claude-sonnet-5-5
           # harness-settings: |
-          #   model: claude-sonnet-5-5
           #   base-url: https://opencode.ai/inference/anthropic
           # With an Anthropic key, leave out base-url.
           protected-paths: |

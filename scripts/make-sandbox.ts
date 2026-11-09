@@ -282,8 +282,7 @@ jobs:
           OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
         with:
           mode: ${mode}
-          harness-settings: |
-            model: opencode/deepseek-v4.1-flash
+          model: opencode/deepseek-v4.1-flash
           protected-paths: |
             src/payments/**
 `;
