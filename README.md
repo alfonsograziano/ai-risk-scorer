@@ -469,3 +469,7 @@ node scripts/render-diagram.ts
 - Three harnesses: OpenCode, Claude Code and Codex. Pi is planned. The eval results above are from OpenCode; Claude Code and Codex have not been through the sandbox eval yet.
 - No override log yet. Every run leaves a JSON record, which is the raw material for it.
 - The reviewer agent sets its own system prompt and turns off project config, and a local test on OpenCode 2.0.20 showed that a planted `AGENTS.md` or `CLAUDE.md` does not reach the model. That was one test on one version, so the prompt still treats every repo file as untrusted. For Claude Code, `CLAUDE.md` is turned off with `CLAUDE_CODE_DISABLE_CLAUDE_MDS` and repo settings with `--restricted`. The flags were checked against Claude Code 2.1.319, and live reviews on the demo repo ran through OpenCode's endpoint with non-Claude models. For Codex, a local test on 0.167.0 with a scripted model checked that the repo's `AGENTS.md` is not sent and that only the three read tools are offered.
+
+## License
+
+[MIT](LICENSE) © Alfonso Graziano
