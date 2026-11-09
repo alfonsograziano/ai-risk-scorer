@@ -37,21 +37,21 @@ jobs:
       - uses: alfonsograziano/needs-human-review@v1
         with:
           mode: shadow
-          # The model key, whatever the harness. The harness passes it to the agent.
+          # The model key, whatever the harness: here an Anthropic key.
+          # The harness passes it to the agent in the variable it reads.
           api-key: ${{ secrets.API_KEY }}
           # The coding agent that runs the review, the model, and the other
           # harness settings. Leave any of them out to get the harness's default.
-          harness: opencode # or claude-code
-          model: opencode/deepseek-v4.1-flash
+          harness: claude-code # the default; or codex, opencode
+          model: claude-sonnet-5-5
           harness-settings: |
-            version: 2.2.5
-          # For Claude Code with the same OpenCode key, through OpenCode's endpoint.
-          # The model can be any one your OpenCode workspace has turned on:
-          # harness: claude-code
-          # model: claude-sonnet-5-5
+            version: 2.1.319
+            effort: high
+          # With an OpenCode key instead, reach models through OpenCode's
+          # endpoint. The model can be any one your OpenCode workspace has on:
+          # model: glm-5.3
           # harness-settings: |
           #   base-url: https://opencode.ai/inference/anthropic
-          # With an Anthropic key, leave out base-url.
           protected-paths: |
             src/payments/**
             **/migrations/**

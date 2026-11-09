@@ -1,6 +1,6 @@
 # Needs Human Review — Spec
 
-Status: v1 built, 2026-11-02 (spec v0.9). v0.9 (2026-11-09): Codex harness, with read-only tools served by the action's own MCP server (section 6.4). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
+Status: v1 built, 2026-11-02 (spec v0.10). v0.10 (2026-11-09): Claude Code is the default harness; the v1.0 `opencode-version` input is removed. v0.9 (2026-11-09): Codex harness, with read-only tools served by the action's own MCP server (section 6.4). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
 
 ## 1. What it is
 
@@ -370,7 +370,7 @@ interface FileRead {
 
 One `run` is one reviewer: one slice, or the integrator. The action calls it as many times as section 4.7 needs. The harness never has to know about slices, so an adapter stays small.
 
-The `harness` input picks the adapter: `opencode` (default), `claude-code` or `codex`. `pi` is planned (section 14).
+The `harness` input picks the adapter: `claude-code` (default), `codex` or `opencode`. Claude Code is the default because it is the coding agent most teams already use. `pi` is planned (section 14).
 
 Everything that depends on the harness goes in one input, `harness-settings`: one `key: value` per line, blank lines and `#` comments skipped. The value is everything after the first colon, so a Bedrock ARN works as a model. Each harness declares the settings it takes, their defaults and how they are checked. An unknown key, a key set twice or a bad value is a config error, so a typo cannot silently fall back to a default. A key with an empty value counts as not set. A `model` may not start with `-`, since it is passed to the CLI as a flag value.
 
@@ -395,7 +395,7 @@ The key is not a setting. Settings go into the verdict record; a key must not. I
 
 With `api-key` empty, the agent reads its own variables from the job env, as before. The setup step masks the key in the log, in case it was pasted in as text rather than passed from a secret.
 
-The model also has its own top-level input, `model`, since it is the setting teams change most. It sets `model` for any harness, in that harness's format. The v1.0 input `opencode-version` still works, so existing workflows keep running: it sets `version`, and only with `opencode`. Setting the same thing in both places (the input and `harness-settings`) is a config error.
+The model also has its own top-level input, `model`, since it is the setting teams change most. It sets `model` for any harness, in that harness's format. Setting it in both places (the input and `harness-settings`) is a config error. The v1.0 input `opencode-version` is gone: `version` in `harness-settings` replaces it.
 
 Each harness gets its own credentials through an allow-list (sections 6.2 and 6.3). Every adapter shares the base list of what a CLI needs to run (`PATH`, `HOME`, locale, temp and proxy variables, `XDG_*`) and never passes `INPUT_*`, `GITHUB_*`, `ACTIONS_*` or `RUNNER_*`.
 
@@ -590,11 +590,10 @@ The action job itself only fails on bad config or when it cannot reach GitHub at
 | Input | Default | Meaning |
 |---|---|---|
 | `mode` | `shadow` | `shadow`, `advisory` or `autonomous` |
-| `harness` | `opencode` | Which coding agent runs the review: `opencode`, `claude-code` or `codex` |
+| `harness` | `claude-code` | Which coding agent runs the review: `claude-code`, `codex` or `opencode` |
 | `harness-settings` | empty | Settings for the harness, one `key: value` per line (section 6.1): `version`, `effort` and `base-url` (Claude Code and Codex), `auth` (Claude Code) |
 | `api-key` | empty | Key for the model, whatever the harness. The harness puts it where its agent reads it (section 6.1) |
 | `model` | the harness's default | Model that runs the review, in the harness's format (section 6.1). Same as `model` in `harness-settings` |
-| `opencode-version` | empty | Deprecated: use `version` in `harness-settings` |
 | `github-token` | `${{ github.token }}` | Token for comments, labels, status and merge |
 | `protected-paths` | empty | Globs that always need a human, one per line |
 | `self-protected-paths` | empty | Extra paths added to the always-on list in G4 |

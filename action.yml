@@ -10,8 +10,9 @@ inputs:
     description: shadow (comment only), advisory (labels and a status), or autonomous (merges safe PRs)
     default: shadow
   harness:
-    description: Coding agent that runs the review, opencode, claude-code or codex
-    default: opencode
+    description: |
+      Coding agent that runs the review: claude-code, codex or opencode
+    default: claude-code
   model:
     description: |
       Model that runs the review, in the harness's format: provider/model for
@@ -31,9 +32,6 @@ inputs:
       in the variable that agent reads (OPENCODE_API_KEY, ANTHROPIC_API_KEY,
       OPENAI_API_KEY...).
       Pass it from a secret. Empty uses the agent's own variables from env.
-    default: ''
-  opencode-version:
-    description: Deprecated, use "version" in harness-settings. Still works with the opencode harness.
     default: ''
   github-token:
     description: Token for comments, labels, the status and the merge
@@ -146,7 +144,6 @@ runs:
         INPUT_HARNESS_SETTINGS: ${{ inputs.harness-settings }}
         INPUT_API_KEY: ${{ inputs.api-key }}
         INPUT_MODEL: ${{ inputs.model }}
-        INPUT_OPENCODE_VERSION: ${{ inputs.opencode-version }}
         INPUT_PROTECTED_PATHS: ${{ inputs.protected-paths }}
         INPUT_SELF_PROTECTED_PATHS: ${{ inputs.self-protected-paths }}
         INPUT_MAX_LINES_CHANGED: ${{ inputs.max-lines-changed }}
@@ -230,7 +227,6 @@ runs:
         INPUT_HARNESS_SETTINGS: ${{ inputs.harness-settings }}
         INPUT_API_KEY: ${{ inputs.api-key }}
         INPUT_MODEL: ${{ inputs.model }}
-        INPUT_OPENCODE_VERSION: ${{ inputs.opencode-version }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_PROTECTED_PATHS: ${{ inputs.protected-paths }}
         INPUT_SELF_PROTECTED_PATHS: ${{ inputs.self-protected-paths }}

@@ -44,12 +44,14 @@ test('bad config is rejected with every problem listed', () => {
   );
 });
 
-test('the harness defaults to opencode with its own defaults', () => {
+test('the harness defaults to claude-code with its own defaults', () => {
   const c = readConfig({});
-  assert.equal(c.harness, 'opencode');
-  assert.deepEqual(c.harnessSettings, { model: 'opencode/deepseek-v4.1-flash', version: '2.2.5' });
-  assert.equal(c.model, 'opencode/deepseek-v4.1-flash');
+  assert.equal(c.harness, 'claude-code');
+  assert.deepEqual(c.harnessSettings, { model: 'claude-sonnet-5-5', version: '2.1.319' });
+  assert.equal(c.model, 'claude-sonnet-5-5');
+  assert.deepEqual(readConfig({ INPUT_HARNESS: 'opencode' }).harnessSettings, { model: 'opencode/deepseek-v4.1-flash', version: '2.2.5' });
 });
+
 
 test('claude-code takes its settings from harness-settings', () => {
   const d = readConfig({ INPUT_HARNESS: 'claude-code' });
@@ -79,20 +81,18 @@ test('bad harness settings are rejected', () => {
   };
   assert.match(problems({ INPUT_HARNESS: 'pi' })[0] ?? '', /harness must be one of opencode, claude-code, codex, fake/);
   assert.match(problems({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'modle: x' })[0] ?? '', /"modle" is not a setting of the claude-code harness/);
-  assert.match(problems({ INPUT_HARNESS_SETTINGS: 'effort: high' })[0] ?? '', /"effort" is not a setting of the opencode harness/);
+  assert.match(problems({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'effort: high' })[0] ?? '', /"effort" is not a setting of the opencode harness/);
   assert.match(problems({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'version: latest' })[0] ?? '', /version must be a release number/);
   assert.match(problems({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'effort: turbo' })[0] ?? '', /effort must be/);
-  assert.match(problems({ INPUT_HARNESS_SETTINGS: 'model: deepseek' })[0] ?? '', /model must look like provider\/model/);
+  assert.match(problems({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'model: deepseek' })[0] ?? '', /model must look like provider\/model/);
   assert.match(problems({ INPUT_HARNESS_SETTINGS: 'just a line' })[0] ?? '', /must look like "key: value"/);
-  assert.match(problems({ INPUT_HARNESS_SETTINGS: 'model: a/b\nmodel: c/d' })[0] ?? '', /sets "model" twice/);
+  assert.match(problems({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'model: a/b\nmodel: c/d' })[0] ?? '', /sets "model" twice/);
 });
 
-test('the model and opencode-version inputs set the model and version, but not together with harness-settings', () => {
-  const c = readConfig({ INPUT_MODEL: 'opencode/other', INPUT_OPENCODE_VERSION: '2.3.0' });
-  assert.deepEqual(c.harnessSettings, { model: 'opencode/other', version: '2.3.0' });
-  assert.equal(readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: 'claude-haiku-5-5' }).model, 'claude-haiku-5-5');
-  assert.throws(() => readConfig({ INPUT_MODEL: 'opencode/a', INPUT_HARNESS_SETTINGS: 'model: opencode/b' }), /set model or "model" in harness-settings, not both/);
-  assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_OPENCODE_VERSION: '2.2.5' }), /opencode-version only applies to the opencode harness/);
+test('the model input sets the model, but not together with "model" in harness-settings', () => {
+  assert.equal(readConfig({ INPUT_MODEL: 'claude-haiku-5-5' }).model, 'claude-haiku-5-5');
+  assert.throws(() => readConfig({ INPUT_MODEL: 'claude-a', INPUT_HARNESS_SETTINGS: 'model: claude-b' }), /set model or "model" in harness-settings, not both/);
+  assert.equal(readConfig({ INPUT_OPENCODE_VERSION: '2.2.5' }).harnessSettings.version, '2.1.319', 'the v1.0 opencode-version input is gone');
 });
 
 test('api-key is read but kept out of the harness settings', () => {
@@ -110,14 +110,14 @@ test('base-url must be https, or http on localhost, and hold no credentials', ()
   assert.throws(() => ok('not a url'), /must be a URL/);
   assert.throws(() => ok('https://user:pw@gw.example.com'), /must not hold credentials/);
   assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'auth: basic' }), /auth must be x-api-key or bearer/);
-  assert.throws(() => readConfig({ INPUT_HARNESS_SETTINGS: 'base-url: https://x.example' }), /"base-url" is not a setting of the opencode harness/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'base-url: https://x.example' }), /"base-url" is not a setting of the opencode harness/);
 });
 
 test('a model cannot start with a dash, and an empty setting means the default', () => {
   assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'model: --dangerously-skip-permissions' }), /model must be one word that does not start with a dash/);
-  assert.throws(() => readConfig({ INPUT_HARNESS_SETTINGS: 'model: -x/y' }), /model must look like provider\/model/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'model: -x/y' }), /model must look like provider\/model/);
   assert.equal(readConfig({ INPUT_HARNESS: 'claude-code', INPUT_HARNESS_SETTINGS: 'model:' }).model, 'claude-sonnet-5-5');
-  assert.throws(() => readConfig({ INPUT_HARNESS_SETTINGS: 'constructor: x' }), /"constructor" is not a setting of the opencode harness/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_HARNESS_SETTINGS: 'constructor: x' }), /"constructor" is not a setting of the opencode harness/);
 });
 
 test('base-url cannot carry a query or fragment, since it lands in the verdict record', () => {
@@ -127,11 +127,11 @@ test('base-url cannot carry a query or fragment, since it lands in the verdict r
 });
 
 test('the model input sets the model for any harness and is checked like the setting', () => {
-  assert.equal(readConfig({ INPUT_MODEL: 'opencode/kimi-k3' }).harnessSettings.model, 'opencode/kimi-k3');
+  assert.equal(readConfig({ INPUT_HARNESS: 'opencode', INPUT_MODEL: 'opencode/kimi-k3' }).harnessSettings.model, 'opencode/kimi-k3');
   const c = readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: 'deepseek-v4.1-flash', INPUT_HARNESS_SETTINGS: 'base-url: https://opencode.ai/inference/anthropic' });
   assert.equal(c.model, 'deepseek-v4.1-flash');
   assert.equal(c.harnessSettings.model, 'deepseek-v4.1-flash', 'the record shows the model with the other settings');
-  assert.throws(() => readConfig({ INPUT_MODEL: 'deepseek' }), /model must look like provider\/model/);
+  assert.throws(() => readConfig({ INPUT_HARNESS: 'opencode', INPUT_MODEL: 'deepseek' }), /model must look like provider\/model/);
   assert.throws(() => readConfig({ INPUT_HARNESS: 'claude-code', INPUT_MODEL: '-x' }), /must be one word that does not start with a dash/);
 });
 

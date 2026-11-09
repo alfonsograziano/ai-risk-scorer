@@ -26,7 +26,7 @@ const { values } = parseArgs({
     head: { type: 'string', default: 'HEAD' },
     title: { type: 'string' },
     body: { type: 'string', default: '' },
-    harness: { type: 'string', default: 'opencode' },
+    harness: { type: 'string' },
     model: { type: 'string' },
     effort: { type: 'string' },
     'base-url': { type: 'string' },
@@ -48,16 +48,17 @@ if (values.help) {
   process.exit(0);
 }
 
-// Each harness has the same default model as in CI. Locally OpenCode takes
-// the key from your console login, or from OPENCODE_API_KEY if that is set.
-// Claude Code needs ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN or cloud credentials.
+// The default harness (Claude Code) and each harness's default model are the
+// same as in CI. Claude Code needs ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN
+// or cloud credentials; Codex needs OPENAI_API_KEY. Locally OpenCode takes the
+// key from your console login, or from OPENCODE_API_KEY if that is set.
 // API_KEY, if set, is the generic api-key input: the harness puts it where its agent reads it.
 const given = { model: values.model, effort: values.effort, 'base-url': values['base-url'], auth: values.auth };
 const settings = Object.entries(given)
   .filter(([, v]) => v)
   .map(([k, v]) => `${k}: ${v}`)
   .join('\n');
-const env: Record<string, string> = { INPUT_MODE: values.mode, INPUT_HARNESS: values.harness, INPUT_HARNESS_SETTINGS: settings, INPUT_API_KEY: process.env.API_KEY ?? '' };
+const env: Record<string, string> = { INPUT_MODE: values.mode, INPUT_HARNESS: values.harness ?? '', INPUT_HARNESS_SETTINGS: settings, INPUT_API_KEY: process.env.API_KEY ?? '' };
 if (values.protected.length > 0) env.INPUT_PROTECTED_PATHS = values.protected.join('\n');
 if (values['max-lines']) env.INPUT_MAX_LINES_CHANGED = values['max-lines'];
 if (values['max-files']) env.INPUT_MAX_FILES_CHANGED = values['max-files'];
