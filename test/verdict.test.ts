@@ -72,5 +72,7 @@ test('safe on runtime code needs the impact pass', () => {
   const base = { ...good, files_reviewed: ['src/a.ts'] };
   assert.equal(parse(base, code).ok, false);
   assert.equal(parse({ ...base, affected_code: [{ location: 'src/b.ts:10', why: 'Calls a().' }] }, code).ok, true);
+  // A config change with no callers passes when the reviewer lists what it checked.
+  assert.equal(parse({ ...base, affected_code: [{ location: 'src/main.ts:1', why: 'Does not read package.json, so it is not affected.' }] }, code).ok, true);
   assert.equal(parse({ ...base, decision: 'needs_human', risk: 'medium' }, code).ok, true);
 });

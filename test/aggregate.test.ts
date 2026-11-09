@@ -52,3 +52,16 @@ test('no valid runs at all has no risk and needs a human', () => {
   assert.equal(a.decision, 'needs_human');
   assert.equal(a.risk, null);
 });
+
+test('a rejected answer is kept apart from a run that did not finish', () => {
+  const a = aggregate([{ label: 'review', ok: false, error: 'no proof of the impact pass', rejected: true }]);
+  assert.equal(a.decision, 'needs_human');
+  assert.deepEqual(a.failures, []);
+  assert.deepEqual(a.rejected, ['review: no proof of the impact pass']);
+  assert.ok(a.summary.startsWith('The reviewer answered'));
+});
+
+test('a rejected answer is a no, even if every other run said safe', () => {
+  const a = aggregate([run('slice 1'), { label: 'slice 2', ok: false, error: 'bad JSON', rejected: true }]);
+  assert.equal(a.decision, 'needs_human');
+});

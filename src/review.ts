@@ -39,7 +39,7 @@ export interface ReviewOptions {
 }
 
 function humanOnly(reason: string): Aggregate {
-  return { decision: 'needs_human', risk: null, confidence: null, summary: reason, reasons: [reason], riskAreas: [], affectedCode: [], failures: [] };
+  return { decision: 'needs_human', risk: null, confidence: null, summary: reason, reasons: [reason], riskAreas: [], affectedCode: [], failures: [], rejected: [] };
 }
 
 /**
@@ -86,7 +86,8 @@ export async function runReview(opts: ReviewOptions): Promise<ReviewResult> {
       log(`${label}: failed, ${error}`);
       return { label, ok: false, error };
     }
-    const outcome = check(result);
+    const checked = check(result);
+    const outcome: RunOutcome = checked.ok ? checked : { ...checked, rejected: true };
     logs.push({
       label,
       ok: outcome.ok,

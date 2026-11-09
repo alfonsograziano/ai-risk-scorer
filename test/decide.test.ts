@@ -15,6 +15,7 @@ const safe: Aggregate = {
   riskAreas: [],
   affectedCode: [],
   failures: [],
+  rejected: [],
 };
 
 test('safe, low risk and enough stars may merge', () => {
@@ -66,4 +67,16 @@ test('the report explains a blocked merge', () => {
 test('stars render as a five-star bar', () => {
   assert.equal(stars(2), '★★☆☆☆ 2/5');
   assert.equal(stars(null), 'n/a');
+});
+
+test('a rejected answer blocks a merge, and the comment does not say a reviewer asked for a human', () => {
+  const agg: Aggregate = { ...safe, decision: 'needs_human', risk: null, confidence: null, rejected: ['review: no proof of the impact pass'] };
+  const d = decide(agg, testConfig());
+  assert.equal(d.mergeAllowed, false);
+  assert.ok(d.blockers.includes("the reviewer's answer did not pass the action's checks"));
+  assert.ok(!d.blockers.includes('a reviewer said a human must check'));
+  assert.ok(!d.blockers.includes('the AI review did not finish'));
+  const md = renderReport({ result: { ...result(agg, false), decision: d }, mode: 'shadow', action: 'none', headSha: 'abc', model: 'm' });
+  assert.ok(md.includes('- The answer was rejected: review: no proof of the impact pass'));
+  assert.ok(!md.includes('could not finish'));
 });

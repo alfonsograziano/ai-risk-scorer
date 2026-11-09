@@ -37,7 +37,7 @@ export interface ScoreResult {
 }
 
 function humanOnly(summary: string, reasons: string[]): Aggregate {
-  return { decision: 'needs_human', risk: null, confidence: null, summary, reasons, riskAreas: [], affectedCode: [], failures: [] };
+  return { decision: 'needs_human', risk: null, confidence: null, summary, reasons, riskAreas: [], affectedCode: [], failures: [], rejected: [] };
 }
 
 /**

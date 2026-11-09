@@ -109,7 +109,7 @@ export function parseVerdict(text: string, rules: VerdictRules): ParseResult {
     if (unlisted.length > 0) return { ok: false, error: `files_reviewed does not list: ${unlisted.join(', ')}` };
   }
   if (decision === 'safe' && rules.runtimeChanged && affected_code.length === 0) {
-    return { ok: false, error: '"safe" on runtime code with an empty affected_code: the impact pass was not done' };
+    return { ok: false, error: 'it said "safe" for a change to code or config but listed no code it checked (affected_code is empty), so there is no proof of the impact pass' };
   }
 
   return {

@@ -14,7 +14,7 @@ CI has already passed. Tests, linters and type checks are green. Protected paths
    - Did the order of checks, side effects or error handling change? Can a code path now run before a guard, or skip one?
    - Did a default, a flag or a config value change? What does it control?
    - Do the tests still cover the behavior that changed, including the branches you found?
-   Put every place you found in `affected_code`. If the change can reach other code and you list nothing, your answer is invalid.
+   Put every place you found in `affected_code`. If nothing depends on the change, list the places you checked and why they are not affected. If a file other than docs or tests changed and you list nothing, your answer is invalid.
 5. You can only read. You cannot run code.
 6. Decide how much damage this change could do if it has a bug, and how sure you are that it does not.
 

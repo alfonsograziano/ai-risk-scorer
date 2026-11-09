@@ -66,6 +66,7 @@ export function renderReport(r: ReportInput): string {
     for (const b of result.decision.blockers) if (!agg.reasons.includes(b)) lines.push(`- Rule: ${inline(b)}.`);
   }
   for (const f of agg.failures) lines.push(`- The review could not finish: ${inline(f)}`);
+  for (const f of agg.rejected) lines.push(`- The answer was rejected: ${inline(f)}`);
   if (r.action === 'merge-blocked' && r.mergeError) lines.push(`- GitHub refused the merge: ${inline(r.mergeError)}`);
   lines.push('');
 

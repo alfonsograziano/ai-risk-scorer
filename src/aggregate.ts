@@ -1,7 +1,11 @@
 import { RISK_ORDER, type AffectedCode, type Risk, type Verdict } from './types.ts';
 
-/** The outcome of one reviewer run: a slice, or the integrator. */
-export type RunOutcome = { label: string; ok: true; verdict: Verdict } | { label: string; ok: false; error: string };
+/**
+ * The outcome of one reviewer run: a slice, or the integrator. A failed run is
+ * either an error (crash, timeout: the review did not finish) or, with
+ * `rejected`, an answer that came back but failed the action's checks.
+ */
+export type RunOutcome = { label: string; ok: true; verdict: Verdict } | { label: string; ok: false; error: string; rejected?: boolean };
 
 export interface Aggregate {
   decision: 'safe' | 'needs_human';
@@ -12,7 +16,10 @@ export interface Aggregate {
   reasons: string[];
   riskAreas: string[];
   affectedCode: AffectedCode[];
+  /** Runs that did not finish: a crash or a timeout. */
   failures: string[];
+  /** Runs that answered, but the answer failed the action's checks. */
+  rejected: string[];
 }
 
 /**
@@ -21,7 +28,9 @@ export interface Aggregate {
  */
 export function aggregate(runs: RunOutcome[]): Aggregate {
   const good = runs.filter((r): r is Extract<RunOutcome, { ok: true }> => r.ok);
-  const failures = runs.filter((r): r is Extract<RunOutcome, { ok: false }> => !r.ok).map((r) => `${r.label}: ${r.error}`);
+  const failed = runs.filter((r): r is Extract<RunOutcome, { ok: false }> => !r.ok);
+  const failures = failed.filter((r) => !r.rejected).map((r) => `${r.label}: ${r.error}`);
+  const rejected = failed.filter((r) => r.rejected).map((r) => `${r.label}: ${r.error}`);
   const many = runs.length > 1;
   const tag = (label: string, text: string) => (many ? `[${label}] ${text}` : text);
 
@@ -35,10 +44,14 @@ export function aggregate(runs: RunOutcome[]): Aggregate {
   const reasons = reasonSource.flatMap((r) => r.verdict.reasons.map((x) => tag(r.label, x)));
 
   const integrator = good.find((r) => r.label === 'integrator');
-  const summary = (integrator ?? good[0])?.verdict.summary ?? 'The review could not finish.';
+  const noVerdict =
+    failures.length > 0 || rejected.length === 0
+      ? 'The review could not finish.'
+      : "The reviewer answered, but the answer did not pass the action's checks, so it cannot be trusted.";
+  const summary = (integrator ?? good[0])?.verdict.summary ?? noVerdict;
 
   return {
-    decision: failures.length === 0 && !anyNo && good.length > 0 ? 'safe' : 'needs_human',
+    decision: failed.length === 0 && !anyNo && good.length > 0 ? 'safe' : 'needs_human',
     risk,
     confidence,
     summary,
@@ -46,5 +59,6 @@ export function aggregate(runs: RunOutcome[]): Aggregate {
     riskAreas: [...new Set(good.flatMap((r) => r.verdict.risk_areas))],
     affectedCode: good.flatMap((r) => r.verdict.affected_code.map((a) => ({ location: a.location, why: tag(r.label, a.why) }))),
     failures,
+    rejected,
   };
 }

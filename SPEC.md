@@ -1,6 +1,6 @@
 # Needs Human Review — Spec
 
-Status: v1 built, 2026-11-02 (spec v0.11). v0.11 (2026-11-09): every sign-in the agents' own GitHub Actions support: Claude Code on Bedrock, Vertex AI and Foundry, and with a Claude subscription token; Codex on Azure OpenAI; credentials files moved out of the checkout (section 6.1). v0.10 (2026-11-09): Claude Code is the default harness; the v1.0 `opencode-version` input is removed. v0.9 (2026-11-09): Codex harness, with read-only tools served by the action's own MCP server (section 6.4). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
+Status: v1 built, 2026-11-02 (spec v0.12). v0.12 (2026-11-09): a change to code or config with no callers must still list the places the reviewer checked in `affected_code`, and the comment keeps a run that did not finish apart from an answer that was rejected (sections 5, 8.1 and 9). v0.11 (2026-11-09): every sign-in the agents' own GitHub Actions support: Claude Code on Bedrock, Vertex AI and Foundry, and with a Claude subscription token; Codex on Azure OpenAI; credentials files moved out of the checkout (section 6.1). v0.10 (2026-11-09): Claude Code is the default harness; the v1.0 `opencode-version` input is removed. v0.9 (2026-11-09): Codex harness, with read-only tools served by the action's own MCP server (section 6.4). v0.8 (2026-11-09): Claude Code harness, and harness settings in one `harness-settings` input (sections 6 and 10). v0.7 (2026-11-07): renamed from AI Risk Scorer to Needs Human Review. The labels are now `needs-human-review` and `safe-to-merge`, the commit status is `human-review`, the default skip label is `needs-human-review:always`, and the comment leads with "Human review required" or "No human review needed". v0.6: fixes from the 2026-11-05 adversarial review (section 17). v0.5: implementation notes in section 16. v0.2: short fixed user message, read-only review workspace, big PRs split into slices. v0.3: the reviewer must read every changed file in full and do an impact pass, checked from the tool-call log. v0.4: confidence is 1 to 5 stars with fixed meanings, not a percentage. Owner: Alfonso Graziano.
 
 ## 1. What it is
 
@@ -304,7 +304,7 @@ The model must answer with one JSON object:
 | `reasons` | array of 1 to 6 strings | Required. Why the model chose this decision. |
 | `risk_areas` | array of strings | Required, can be empty. Short tags like `auth`, `data-migration`, `public-api`. |
 | `files_reviewed` | array of strings | Required for slice reviewers. Every file in the slice must be listed, or the verdict is invalid. The integrator leaves it empty. |
-| `affected_code` | array of `{ location, why }`, at most 10 | Required, can be empty only when the change cannot reach other code (docs, comments, a new test). Unchanged code whose behavior can change because of this PR: `location` is `path:line`, `why` is one sentence. A `"safe"` verdict on a PR that changes runtime code with an empty `affected_code` is invalid: the reviewer did not do the impact pass. |
+| `affected_code` | array of `{ location, why }`, at most 10 | Required. Unchanged code whose behavior can change because of this PR: `location` is `path:line`, `why` is one sentence. Can be empty only when every changed file is docs or tests (the `isDocOrTest` globs). When any other file changed (code, config, `package.json`) and nothing depends on it, the reviewer lists the places it checked and says in `why` that they are not affected. A `"safe"` verdict on such a PR with an empty `affected_code` is rejected: there is no proof of the impact pass. |
 
 Validation is strict. The verdict must be the only JSON object with a `"decision"` field in the model's final message. It must end the message (it may be inside a code fence), and `"decision"` must not appear before it. Prose before it is fine. A model that quotes text from the PR, or whose answer is cut off, could otherwise have a verdict planted in the PR taken for its own. If there is no JSON, more than one candidate, a field missing or of the wrong type, or extra fields, the verdict is invalid and the PR needs a human.
 
@@ -523,7 +523,7 @@ Changes how session tokens are refreshed.
 
 When a hard gate stops the run, the comment names the gate and the files, for example "Touches protected path `payments/**`: `payments/charge.ts`". There is no AI part in that case.
 
-When the review fails, the comment says so plainly under the "Human review required" heading: "The review could not finish (timeout after 10 minutes)."
+When the review fails, the comment says so plainly under the "Human review required" heading, and it keeps two cases apart. A crash or a timeout reads "The review could not finish (timeout after 10 minutes)." An answer that came back but failed the action's checks (bad JSON, a file not read, no proof of the impact pass) reads "The answer was rejected: …", with the check that failed. The reviewer did finish in that case, so saying it did not would send the team looking for the wrong problem.
 
 ### 8.2 Logs
 
@@ -581,7 +581,7 @@ The README says this plainly: the AI step lowers risk, it does not remove it. Th
 | One slice or the integrator fails, times out or gives an invalid verdict | needs a human, even if every other slice said safe |
 | A reviewer does not list every file in its slice | needs a human |
 | The tool-call log shows a changed file was not read in full | needs a human |
-| `"safe"` on runtime code with an empty `affected_code` | needs a human |
+| `"safe"` on a change to code or config with an empty `affected_code` | needs a human (answer rejected) |
 | More slices than `max-slices` | needs a human |
 | Review folder cannot be written or made read-only | needs a human |
 | A changed path is a symlink, a submodule or not a regular file | needs a human |
@@ -802,7 +802,7 @@ CI has already passed. Tests, linters and type checks are green. Protected paths
    - Did the order of checks, side effects or error handling change? Can a code path now run before a guard, or skip one?
    - Did a default, a flag or a config value change? What does it control?
    - Do the tests still cover the behavior that changed, including the branches you found?
-   Put every place you found in `affected_code`. If the change can reach other code and you list nothing, your answer is invalid.
+   Put every place you found in `affected_code`. If nothing depends on the change, list the places you checked and why they are not affected. If a file other than docs or tests changed and you list nothing, your answer is invalid.
 5. You can only read. You cannot run code.
 6. Decide how much damage this change could do if it has a bug, and how sure you are that it does not.
 

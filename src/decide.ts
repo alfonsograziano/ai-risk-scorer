@@ -13,7 +13,10 @@ export interface Decision {
 export function decide(agg: Aggregate, config: Pick<Config, 'maxRiskToMerge' | 'minConfidence'>): Decision {
   const blockers: string[] = [];
   if (agg.failures.length > 0) blockers.push('the AI review did not finish');
-  if (agg.decision !== 'safe') blockers.push('a reviewer said a human must check');
+  if (agg.rejected.length > 0) blockers.push("the reviewer's answer did not pass the action's checks");
+  // Only say a reviewer asked for a human when no run failed: otherwise the
+  // failed run is the reason, and this line would be wrong.
+  if (agg.decision !== 'safe' && agg.failures.length === 0 && agg.rejected.length === 0) blockers.push('a reviewer said a human must check');
   if (agg.risk === null) blockers.push('no valid verdict');
   else if (RISK_ORDER[agg.risk] > RISK_ORDER[config.maxRiskToMerge]) blockers.push(`risk ${agg.risk} is above the limit (${config.maxRiskToMerge})`);
   if (agg.confidence !== null && agg.confidence < config.minConfidence) {

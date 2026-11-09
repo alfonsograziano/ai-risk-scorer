@@ -109,7 +109,8 @@ test('a reviewer that skipped reading a file is not trusted', async () => {
     });
     const r = await runReview({ ws, harness, systemPrompt: 'S', pr, gates: [], config: testConfig() });
     assert.equal(r.aggregate.decision, 'needs_human');
-    assert.ok(r.aggregate.failures[0]?.includes('src/f01.ts'));
+    assert.ok(r.aggregate.rejected[0]?.includes('src/f01.ts'));
+    assert.deepEqual(r.aggregate.failures, []);
   } finally {
     await repo.cleanup();
   }
@@ -119,10 +120,15 @@ test('a crash, a timeout or bad JSON all mean a human', async () => {
   const { repo, base, head } = await bigRepo(1);
   try {
     const ws = await prepareWorkspace({ repoDir: repo.dir, baseSha: base, headSha: head, config: testConfig(), pr: {} });
-    for (const answer of [{ error: 'timed out after 10 minutes' }, { finalText: 'Looks good to me!', reads: [] }]) {
-      const r = await runReview({ ws, harness: new FakeHarness(() => answer), systemPrompt: 'S', pr, gates: [], config: testConfig() });
+    const cases = [
+      { answer: { error: 'timed out after 10 minutes' }, failures: 1, rejected: 0 },
+      { answer: { finalText: 'Looks good to me!', reads: [] }, failures: 0, rejected: 1 },
+    ];
+    for (const c of cases) {
+      const r = await runReview({ ws, harness: new FakeHarness(() => c.answer), systemPrompt: 'S', pr, gates: [], config: testConfig() });
       assert.equal(r.aggregate.decision, 'needs_human');
-      assert.equal(r.aggregate.failures.length, 1);
+      assert.equal(r.aggregate.failures.length, c.failures);
+      assert.equal(r.aggregate.rejected.length, c.rejected);
     }
   } finally {
     await repo.cleanup();
