@@ -1,13 +1,13 @@
 {
   "name": "needs-human-review",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "A GitHub Action that decides if a pull request can merge on its own, or if a human has to check it.",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "Alfonso Graziano",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -16,7 +16,7 @@
     "local": "node scripts/local-review.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.6",
     "typescript": "5.9.3"
   }
 }

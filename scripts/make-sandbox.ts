@@ -122,10 +122,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
       - run: node --test
 `;
 
@@ -270,11 +270,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: \${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
+          allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@${ref}
         env:
           OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}

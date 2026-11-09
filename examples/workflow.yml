@@ -27,11 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
+          allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v1
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}

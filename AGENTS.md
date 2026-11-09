@@ -4,7 +4,7 @@ Needs Human Review is a GitHub Action that answers one question for every PR: do
 
 ## Rules
 
-- Pure TypeScript, run directly by Node 24 with type stripping. No build step, no JavaScript files.
+- Pure TypeScript, run directly by Node 26 with type stripping. No build step, no JavaScript files.
 - Only erasable syntax: no `enum`, no `namespace`, no constructor parameter properties. `tsconfig.json` enforces it.
 - Imports use the `.ts` extension.
 - Zero runtime dependencies. Use Node built-ins and `fetch`. Dev dependencies are `typescript` and `@types/node` only.

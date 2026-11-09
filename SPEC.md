@@ -579,11 +579,13 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
+          allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v1
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -605,14 +607,14 @@ The checkout gives the action the git history to compute the diff, and gives the
 ### 12.1 Pure TypeScript, no build
 
 - All code is TypeScript in `src/`. There is no JavaScript in the repo and no build step.
-- It runs on Node 24, which runs `.ts` files directly by stripping the types. So the code only uses syntax that can be stripped: no `enum`, no `namespace`, no parameter properties. `tsconfig.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax` to enforce this.
+- It runs on Node 26, which runs `.ts` files directly by stripping the types. So the code only uses syntax that can be stripped: no `enum`, no `namespace`, no parameter properties. `tsconfig.json` sets `erasableSyntaxOnly` and `verbatimModuleSyntax` to enforce this.
 - Zero runtime dependencies. GitHub API calls use `fetch`. Globs use `path.matchesGlob` from Node. Inputs are read from `INPUT_*` environment variables, outputs written to `GITHUB_OUTPUT` and the summary to `GITHUB_STEP_SUMMARY`.
 - Dev dependencies only: `typescript` (for `tsc --noEmit`) and `@types/node`.
 - Tests use `node --test` on `.ts` files.
 
 ### 12.2 Action type
 
-A composite action (`action.yml`). Its steps: set up Node 24, install the pinned OpenCode, run `node $GITHUB_ACTION_PATH/src/main.ts`. A composite action is the simplest way to install the harness and run TypeScript without a build.
+A composite action (`action.yml`). Its steps: set up Node 26, install the pinned OpenCode, run `node $GITHUB_ACTION_PATH/src/main.ts`. A composite action is the simplest way to install the harness and run TypeScript without a build.
 
 ### 12.3 Repo layout
 

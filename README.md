@@ -2,7 +2,7 @@
 
 **Does this pull request need a human review? A GitHub Action that answers for every PR, by rules you control.**
 
-![GitHub Action](https://img.shields.io/badge/GitHub-Action-131313?logo=github&logoColor=white) ![Node 24](https://img.shields.io/badge/Node-24-131313?logo=node.js&logoColor=white) ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-cd2016)
+![GitHub Action](https://img.shields.io/badge/GitHub-Action-131313?logo=github&logoColor=white) ![Node 26](https://img.shields.io/badge/Node-26-131313?logo=node.js&logoColor=white) ![Zero runtime dependencies](https://img.shields.io/badge/runtime%20deps-0-cd2016)
 
 Your coding agents open pull requests faster than your team can review them. Most are small: a typo, a new test, a config tweak. They still wait a day for a reviewer. A few touch payments, auth, or a function that three other files depend on, and those get the same tired glance as the rest.
 
@@ -75,11 +75,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
+          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
+          allow-unsafe-pr-checkout: true
       - uses: alfonsograziano/needs-human-review@v1
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
@@ -93,7 +95,7 @@ jobs:
 
 3. Merge that workflow into your default branch. GitHub only runs `workflow_run` workflows from the default branch, which is the point (see [Security](#security)).
 
-`@v1` follows the latest compatible 1.x release. To stay on one exact version, use a release tag such as `@v1.0.0`, or a full commit SHA. Avoid `@main`: it changes with every commit.
+`@v1` follows the latest compatible 1.x release. To stay on one exact version, use a release tag such as `@v1.0.1`, or a full commit SHA. Avoid `@main`: it changes with every commit.
 
 Start in `shadow` mode. The action comments on every PR with its answer and what it would have done, and changes nothing. Leave it there for a few weeks, compare its verdicts with what your reviewers decided, and only then move up.
 
@@ -238,6 +240,8 @@ None of this makes the AI step safe on its own. It lowers risk; the hard rules a
 
 **Forks and secrets.** `workflow_run` runs with your secrets even for fork PRs. That is one more reason fork PRs go to a human by default.
 
+**Why `allow-unsafe-pr-checkout: true`.** Since v7, `actions/checkout` refuses to check out a fork PR from a `workflow_run` workflow, because running a fork's code next to your secrets is how most "pwn request" attacks work. Needs Human Review has to check the PR out to diff it, even just to say that a fork needs a human, so the quick start opts in. That is safe here because nothing in the job runs the PR's code: the action only reads the files, `persist-credentials: false` keeps the token off disk, and the checkout is made read-only before the reviewer starts. Do not add build or test steps to this job. Those belong in your normal CI.
+
 ## Results
 
 The same seven traps, run twice: once locally against a sandbox app, and once as real pull requests on GitHub.
@@ -292,7 +296,7 @@ node scripts/eval-sandbox.ts
 
 ## Development
 
-Pure TypeScript, run directly by Node 24 with no build step and no runtime dependencies. The only dev dependencies are `typescript` and `@types/node`.
+Pure TypeScript, run directly by Node 26 with no build step and no runtime dependencies. The only dev dependencies are `typescript` and `@types/node`.
 
 ```bash
 npm install
