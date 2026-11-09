@@ -1,0 +1,61 @@
+# Needs Human Review, reviewing its own pull requests.
+#
+# GitHub runs workflow_run workflows from the default branch, so a PR cannot
+# change this file to judge itself. The action comes from the released @v2,
+# never from the PR's checkout (`uses: ./` would let a PR rewrite its own
+# reviewer).
+name: Needs Human Review
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# Shadow mode only posts a comment: no labels, no status, no merge.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  checks: read
+  actions: read
+
+concurrency:
+  group: needs-human-review-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          # Fork PRs need this since checkout v7. The action reads the files, never runs them.
+          allow-unsafe-pr-checkout: true
+      - uses: alfonsograziano/needs-human-review@v2
+        with:
+          mode: shadow
+          # An OpenCode key: Claude Code reaches glm-5.3 through OpenCode's Anthropic endpoint.
+          api-key: ${{ secrets.API_KEY }}
+          harness: claude-code
+          model: glm-5.3
+          harness-settings: |
+            base-url: https://opencode.ai/inference/anthropic
+          # What decides a merge, and what keeps the reviewer read-only. Other
+          # repos trust this code to merge for them, so a change here always
+          # gets a human.
+          protected-paths: |
+            action.yml
+            prompts/**
+            src/harness/**
+            src/decide.ts
+            src/gates.ts
+            src/verdict.ts
+            src/reading.ts
+            src/aggregate.ts
+            src/inputs.ts
+            src/setup.ts
+            src/credentials.ts
