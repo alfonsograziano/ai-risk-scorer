@@ -456,7 +456,7 @@ npm install
 npm run check
 ```
 
-`npm run check` runs the type checker and the tests. The gates, the slicer, the verdict parser, the proof-of-reading check and the decision are pure functions, so most tests need neither GitHub nor a model. See [`AGENTS.md`](AGENTS.md) for the rules agents follow in this repo.
+`npm run check` runs the type checker and the tests, including end-to-end runs of `src/main.ts` against a mock GitHub API with a fake reviewer. The gates, the slicer, the verdict parser, the proof-of-reading check and the decision are pure functions, so most tests need neither GitHub nor a model. See [`AGENTS.md`](AGENTS.md) for the rules agents follow in this repo.
 
 The diagram at the top of this README is built from [`docs/diagram/how-it-works.html`](docs/diagram/how-it-works.html). After you edit it, refresh the light and dark PNGs with a local Chrome:
 

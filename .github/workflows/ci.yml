@@ -14,10 +14,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Two commits, so the smoke run below has a base to diff against.
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 26
       - run: npm ci
-      # Typecheck and tests.
+      # Typecheck and tests. test/main.test.ts runs the real src/main.ts
+      # end to end, against a mock GitHub API with a fake reviewer.
       - run: npm run check
+      # The local runner on this commit, with the fake harness. No model is
+      # called, so the review cannot finish and the answer must be "needs a
+      # human" (fail safe).
+      - name: Smoke test the local runner
+        env:
+          NO_COLOR: '1'
+        run: |
+          set -o pipefail
+          node scripts/local-review.ts --repo . --base HEAD~1 --head HEAD --dry | tee "$RUNNER_TEMP/local.txt"
+          grep -q '^NEEDS A HUMAN' "$RUNNER_TEMP/local.txt"
